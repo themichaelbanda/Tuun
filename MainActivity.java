@@ -1,9 +1,13 @@
 package com.penguinsonabeach.tuun;
 
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentSender;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
+import android.location.Criteria;
 import android.location.Location;
+import android.location.LocationManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Looper;
@@ -32,12 +36,19 @@ import com.bumptech.glide.request.RequestOptions;
 import com.google.android.gms.auth.api.Auth;
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
 import com.google.android.gms.common.ConnectionResult;
+import com.google.android.gms.common.api.ApiException;
 import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.common.api.ResolvableApiException;
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationCallback;
 import com.google.android.gms.location.LocationListener;
 import com.google.android.gms.location.LocationRequest;
+import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.location.LocationSettingsRequest;
+import com.google.android.gms.location.LocationSettingsResponse;
+import com.google.android.gms.location.LocationSettingsStatusCodes;
+import com.google.android.gms.location.SettingsClient;
 import com.google.android.gms.location.places.GeoDataClient;
 import com.google.android.gms.location.places.PlaceDetectionClient;
 import com.google.android.gms.location.places.Places;
@@ -47,10 +58,12 @@ import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.UiSettings;
 import com.google.android.gms.maps.model.BitmapDescriptorFactory;
+import com.google.android.gms.maps.model.CameraPosition;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.MapStyleOptions;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
+import com.google.android.gms.tasks.OnFailureListener;
 import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
@@ -64,6 +77,8 @@ import com.google.firebase.storage.FirebaseStorage;
 import com.google.firebase.storage.StorageReference;
 import com.google.firebase.storage.UploadTask;
 
+import java.text.DateFormat;
+import java.util.Date;
 import java.util.HashMap;
 
 import static com.google.android.gms.location.LocationServices.getFusedLocationProviderClient;
@@ -77,6 +92,31 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private GoogleApiClient mGoogleApiClient;
     private static final int RC_SIGN_IN = 1;
     private static final int RC_PHOTO_PICKER = 2;
+    /**
+     * The desired interval for location updates. Inexact. Updates may be more or less frequent.
+     */
+    private static final long UPDATE_INTERVAL_IN_MILLISECONDS = 10000;
+    /**
+     * The fastest rate for active location updates. Exact. Updates will never be more frequent
+     * than this value.
+     */
+    private static final long FASTEST_UPDATE_INTERVAL_IN_MILLISECONDS =
+            UPDATE_INTERVAL_IN_MILLISECONDS / 2;
+    /**
+     * Represents a geographical location.
+     */
+    private Location mCurrentLocation;
+
+    /**
+     * Stores the types of location services the client is interested in using. Used for checking
+     * settings to determine if the device has optimal location settings.
+     */
+    private LocationSettingsRequest mLocationSettingsRequest;
+    /**
+     * Provides access to the Location Settings API.
+     */
+    private SettingsClient mSettingsClient;
+
     private ListView mDrawerList;
     private TextView mTitle;
     private ArrayAdapter<String> mAdapter;
@@ -92,22 +132,18 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private GoogleMap mMap;
     public User uUser;
     private ImageView profilePicture;
-    Location mLastLocation;
     protected FirebaseDatabase database;
     protected DatabaseReference myRef, userRef, activeRef;
     private FirebaseStorage mFirebaseStorage;
     private StorageReference mPhotosStorageReference;
     private ValueEventListener userRefListener;
     private ChildEventListener markerListener;
-    private LocationCallback mLocationCallback;
-    private String userId;
     private static final String TAG = MainActivity.class.getSimpleName();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        setUpMapIfNeeded();
         createNavBarLayout();
 
         // Initialize Firebase Tools
@@ -132,8 +168,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         profilePicture = findViewById(R.id.profilePictureImg);
         mTitle = this.findViewById(R.id.hNameTextView);
 
-        uUser = new User(mUser.getEmail(),mUser.getDisplayName(),null, null);
-
+        uUser = new User(mUser.getEmail(), mUser.getDisplayName(), null, null);
 
 
         // Check if user is in DB and create user object if not create in db and object
@@ -146,7 +181,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         mPlaceDetectionClient = Places.getPlaceDetectionClient(this, null);
 
         // Construct a FusedLocationProviderClient.
-        mFusedLocationProviderClient = getFusedLocationProviderClient(this);
+        //mFusedLocationProviderClient = getFusedLocationProviderClient(this);
+        mFusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this);
+        mSettingsClient = LocationServices.getSettingsClient(this);
 
         // Configure sign-in to request the user's ID, email address, and basic
         // profile. ID and basic profile are included in DEFAULT_SIGN_IN.
@@ -166,31 +203,33 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 } /* OnConnectionFailedListener */)
                 .addApi(Auth.GOOGLE_SIGN_IN_API, gso)
                 .build();
-        //attachMarkerListener();
+
+        // Kick off map features
+        setUpMap();
+        startLocationUpdates();
     }
 
     @Override
-    public void onActivityResult(int requestCode, int resultCode, Intent data){
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-    if(requestCode ==RC_PHOTO_PICKER &&resultCode == RESULT_OK)
-    {
-        Uri selectedImageUri = data.getData();
+        if (requestCode == RC_PHOTO_PICKER && resultCode == RESULT_OK) {
+            Uri selectedImageUri = data.getData();
 
-        // Get a reference to store file at user_photos/<FILENAME> TODO
-        StorageReference photoRef = mPhotosStorageReference.child(mUser.getUid().concat(".jpg"));
+            // Get a reference to store file at user_photos/<FILENAME> TODO
+            StorageReference photoRef = mPhotosStorageReference.child(mUser.getUid().concat(".jpg"));
 
-        // Upload file to Firebase Storage
-        photoRef.putFile(selectedImageUri).addOnSuccessListener(this, new OnSuccessListener<UploadTask.TaskSnapshot>() {
-            @Override
-            public void onSuccess(UploadTask.TaskSnapshot taskSnapshot) {
-                Uri downloadUrl = taskSnapshot.getDownloadUrl();
-                uUser.setPhotoUrl(downloadUrl.toString());
-                userRef.child("photoUrl").setValue(uUser.getPhotoUrl());
-            }
-        });
+            // Upload file to Firebase Storage
+            photoRef.putFile(selectedImageUri).addOnSuccessListener(this, new OnSuccessListener<UploadTask.TaskSnapshot>() {
+                @Override
+                public void onSuccess(UploadTask.TaskSnapshot taskSnapshot) {
+                    Uri downloadUrl = taskSnapshot.getDownloadUrl();
+                    uUser.setPhotoUrl(downloadUrl.toString());
+                    userRef.child("photoUrl").setValue(uUser.getPhotoUrl());
+                }
+            });
+        }
+
     }
-
-}
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
@@ -211,8 +250,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         setupDrawer();
         getSupportActionBar().setDisplayHomeAsUpEnabled(true);
         getSupportActionBar().setHomeButtonEnabled(true);
-
-
     }
 
     private void setupDrawer() {
@@ -249,10 +286,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
                 switch (position) {
                     case 0:
-                                Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
-                                intent.setType("image/jpeg");
-                                intent.putExtra(Intent.EXTRA_LOCAL_ONLY, true);
-                                startActivityForResult(Intent.createChooser(intent, "Complete action using"), RC_PHOTO_PICKER);
+                        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+                        intent.setType("image/jpeg");
+                        intent.putExtra(Intent.EXTRA_LOCAL_ONLY, true);
+                        startActivityForResult(Intent.createChooser(intent, "Complete action using"), RC_PHOTO_PICKER);
 
                         break;
                     case 6:
@@ -301,19 +338,16 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     @Override
-    protected void onPause(){
+    protected void onPause() {
         super.onPause();
         detachDatabaseReadListener();
         detachAuthStateListener();
         detachMarkerListener();
     }
-    
+
     @Override
     protected void onResume() {
         super.onResume();
-        //attachAuthStateListener();
-        //attachMarkerListener();
-
     }
 
     @Override
@@ -339,20 +373,18 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     /*    Firebase Functions
     /*
     /******************************/
-
-    private void attachDatabaseReadListener(){
-        if(userRefListener == null) {
+    private void attachDatabaseReadListener() {
+        if (userRefListener == null) {
             userRefListener = new ValueEventListener() {
                 @Override
                 public void onDataChange(DataSnapshot dataSnapshot) {
                     if (dataSnapshot.getValue(User.class) == null) {
                         userRef.setValue(uUser);
-                    }
-                    else{
+                    } else {
                         uUser = dataSnapshot.getValue(User.class);
                         mTitle.setText(uUser.getName());
 
-                        if(uUser.getPhotoUrl() != null) {
+                        if (uUser.getPhotoUrl() != null) {
                             Glide.with(profilePicture.getContext())
                                     .load(uUser.getPhotoUrl())
                                     .apply(RequestOptions.circleCropTransform())
@@ -376,16 +408,17 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
     }
 
-    private void detachDatabaseReadListener(){
-        if( userRefListener != null){
+    private void detachDatabaseReadListener() {
+        if (userRefListener != null) {
             userRef.removeEventListener(userRefListener);
-            userRefListener = null;}
+            userRefListener = null;
+        }
     }
 
-    private void attachAuthStateListener(){
+    private void attachAuthStateListener() {
         activeRef.child(mAuth.getCurrentUser().getUid()).child("name").setValue(uUser.getName());
         activeRef.child(mAuth.getCurrentUser().getUid()).onDisconnect().removeValue();  //TODO
-        if(mAuthStateListener == null) {
+        if (mAuthStateListener == null) {
             mAuthStateListener = new FirebaseAuth.AuthStateListener() {
                 @Override
                 public void onAuthStateChanged(@NonNull FirebaseAuth firebaseAuth) {
@@ -406,26 +439,28 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
     }
 
-    private void detachAuthStateListener(){
-        if(mAuthStateListener != null){
+    private void detachAuthStateListener() {
+        if (mAuthStateListener != null) {
             mAuth.removeAuthStateListener(mAuthStateListener);
-            mAuthStateListener = null;}
+            mAuthStateListener = null;
+        }
     }
 
-    private void attachMarkerListener(){
+    private void attachMarkerListener() {
 
-        final HashMap<String,Marker> hashMapMarker = new HashMap<>();
+        final HashMap<String, Marker> hashMapMarker = new HashMap<>();
 
-        if(markerListener == null){
+        if (markerListener == null) {
             markerListener = new ChildEventListener() {
                 @Override
                 public void onChildAdded(DataSnapshot dataSnapshot, String s) {
-                    if(dataSnapshot.child("latitude").exists() && (!mUser.getUid().equals(dataSnapshot.getKey()))) {
+                    if (dataSnapshot.child("latitude").exists() && (!mUser.getUid().equals(dataSnapshot.getKey()))) {
                         LatLng latLng = new LatLng(((Double) dataSnapshot.child("latitude").getValue()), ((Double) dataSnapshot.child("longitude").getValue()));
                         MarkerOptions markerOptions = new MarkerOptions();
                         markerOptions.position(latLng);
                         markerOptions.title(dataSnapshot.child("name").getValue().toString());
                         markerOptions.icon(BitmapDescriptorFactory.fromResource(R.drawable.mitsu));
+                        //markerOptions.icon(BitmapDescriptorFactory.fromPath(uUser.getPhotoUrl())).
                         mCurrLocationMarker = mMap.addMarker(markerOptions);
 
                         hashMapMarker.put(dataSnapshot.getKey().toString(), mCurrLocationMarker);
@@ -436,27 +471,27 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 @Override
                 public void onChildChanged(DataSnapshot dataSnapshot, String s) {
 
-                        if(dataSnapshot.exists() && (!mUser.getUid().equals(dataSnapshot.getKey()))) {
-                            //remove marker
-                            Marker marker = hashMapMarker.get(dataSnapshot.getKey().toString());
-                            marker.remove();
-                            hashMapMarker.remove(dataSnapshot.getKey().toString());
+                    if (dataSnapshot.exists() && (!mUser.getUid().equals(dataSnapshot.getKey()))) {
+                        //remove marker
+                        Marker marker = hashMapMarker.get(dataSnapshot.getKey().toString());
+                        marker.remove();
+                        hashMapMarker.remove(dataSnapshot.getKey().toString());
 
-                            // re-add marker
-                            LatLng latLng = new LatLng(((Double) dataSnapshot.child("latitude").getValue()), ((Double) dataSnapshot.child("longitude").getValue()));
-                            MarkerOptions markerOptions = new MarkerOptions();
-                            markerOptions.position(latLng);
-                            markerOptions.title(dataSnapshot.child("name").getValue().toString());
-                            markerOptions.icon(BitmapDescriptorFactory.fromResource(R.drawable.mitsu));
-                            mCurrLocationMarker = mMap.addMarker(markerOptions);
-                            hashMapMarker.put(dataSnapshot.getKey().toString(), mCurrLocationMarker);
+                        // re-add marker
+                        LatLng latLng = new LatLng(((Double) dataSnapshot.child("latitude").getValue()), ((Double) dataSnapshot.child("longitude").getValue()));
+                        MarkerOptions markerOptions = new MarkerOptions();
+                        markerOptions.position(latLng);
+                        markerOptions.title(dataSnapshot.child("name").getValue().toString());
+                        markerOptions.icon(BitmapDescriptorFactory.fromResource(R.drawable.mitsu));
+                        mCurrLocationMarker = mMap.addMarker(markerOptions);
+                        hashMapMarker.put(dataSnapshot.getKey().toString(), mCurrLocationMarker);
 
-                        }
+                    }
                 }
 
                 @Override
                 public void onChildRemoved(DataSnapshot dataSnapshot) {
-                    if(dataSnapshot.exists() && (!mUser.getUid().equals(dataSnapshot.getKey()))) {
+                    if (dataSnapshot.exists() && (!mUser.getUid().equals(dataSnapshot.getKey()))) {
                         Marker marker = hashMapMarker.get(dataSnapshot.getKey().toString());
                         marker.remove();
                         hashMapMarker.remove(dataSnapshot.getKey().toString());
@@ -477,8 +512,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
     }
 
-    private void detachMarkerListener(){
-        if(markerListener != null){
+    private void detachMarkerListener() {
+        if (markerListener != null) {
             activeRef.removeEventListener(markerListener);
             markerListener = null;
         }
@@ -491,7 +526,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     /******************************/
 
     //Setup map
-    private void setUpMapIfNeeded() {
+    private void setUpMap() {
 
         if (android.os.Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             checkLocationPermission();
@@ -508,7 +543,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         mMap = map;
         mMap.setMapType(GoogleMap.MAP_TYPE_NORMAL);
 
-
         //Initialize Google Play Services
         if (android.os.Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (ContextCompat.checkSelfPermission(this,
@@ -517,10 +551,11 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 buildGoogleApiClient();
                 mMap.setMyLocationEnabled(true);
                 mMap.setMapStyle(new MapStyleOptions(getResources().getString(R.string.style_json)));
-                mMap.setMinZoomPreference(10.0f);
                 mMap.setMaxZoomPreference(15.0f);
+                mMap.setMinZoomPreference(10.0f);
                 UiSettings settings = mMap.getUiSettings();
                 settings.setZoomControlsEnabled(true);
+
             }
         } else {
             buildGoogleApiClient();
@@ -538,6 +573,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         mGoogleApiClient.connect();
     }
 
+    // TODO contains location updates
     @Override
     public void onConnected(@Nullable Bundle bundle) {
         mLocationRequest = new LocationRequest();
@@ -547,8 +583,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         if (ContextCompat.checkSelfPermission(this,
                 android.Manifest.permission.ACCESS_FINE_LOCATION)
                 == PackageManager.PERMISSION_GRANTED) {
-            LocationServices.FusedLocationApi.requestLocationUpdates(mGoogleApiClient, mLocationRequest, this);
-            //mFusedLocationProviderClient.requestLocationUpdates(mLocationRequest,mLocationCallback, Looper.myLooper());
+            //LocationServices.FusedLocationApi.getLastLocation(mGoogleApiClient);
         }
 
     }
@@ -628,8 +663,26 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
     }
 
-    @Override
-    public void onLocationChanged(Location location) {
+    // Trigger new location updates at interval/newest version
+    protected void startLocationUpdates() {
+
+        // Create the location request to start receiving updates
+        mLocationRequest = new LocationRequest();
+        mLocationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
+        mLocationRequest.setInterval(UPDATE_INTERVAL_IN_MILLISECONDS);
+        mLocationRequest.setFastestInterval(FASTEST_UPDATE_INTERVAL_IN_MILLISECONDS);
+
+        // Create LocationSettingsRequest object using location request
+        LocationSettingsRequest.Builder builder = new LocationSettingsRequest.Builder();
+        builder.addLocationRequest(mLocationRequest);
+        LocationSettingsRequest locationSettingsRequest = builder.build();
+
+        // Check whether location settings are satisfied
+        // https://developers.google.com/android/reference/com/google/android/gms/location/SettingsClient
+        SettingsClient settingsClient = LocationServices.getSettingsClient(this);
+        settingsClient.checkLocationSettings(locationSettingsRequest);
+
+        // new Google API SDK v11 uses getFusedLocationProviderClient(this)
         if (android.support.v4.app.ActivityCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && android.support.v4.app.ActivityCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             // TODO: Consider calling
             //    ActivityCompat#requestPermissions
@@ -640,43 +693,36 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             // for ActivityCompat#requestPermissions for more details.
             return;
         }
-        mFusedLocationProviderClient.getLastLocation()
-                .addOnSuccessListener(this, new OnSuccessListener<Location>() {
+        getFusedLocationProviderClient(this).requestLocationUpdates(mLocationRequest, new LocationCallback() {
                     @Override
-                    public void onSuccess(Location location) {
+                    public void onLocationResult(LocationResult locationResult) {
+                        // do work here
+                        onLocationChanged(locationResult.getLastLocation());
 
-                        if (location != null) {
-                            uUser.setLocation(location);
-                            userRef.child("latitude").setValue(location.getLatitude());
-                            userRef.child("longitude").setValue(location.getLongitude());
-                            activeRef.child(mAuth.getCurrentUser().getUid()).child("latitude").setValue(location.getLatitude());
-                            activeRef.child(mAuth.getCurrentUser().getUid()).child("longitude").setValue(location.getLongitude());
-
-                            mLastLocation = location;
-                            /* if (mCurrLocationMarker != null) {
-                                mCurrLocationMarker.remove();
-                            } */
-
-                            //Place current location marker TODO
-                            LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
-
-
-                            //move map camera
-                            mMap.moveCamera(CameraUpdateFactory.newLatLng(latLng));
-                            mMap.animateCamera(CameraUpdateFactory.zoomTo(13));
-
-
-                            // Logic to handle location object
-                        }
                     }
-                });
+                },
+                Looper.myLooper());
+    }
 
-        //stop location updates
-        if (mGoogleApiClient != null) {
-            LocationServices.FusedLocationApi.removeLocationUpdates(mGoogleApiClient, this);
-            //mFusedLocationProviderClient.removeLocationUpdates(mLocationCallback);
-        }
+    @Override
+    public void onLocationChanged(Location location) {
+        // New location has now been determined
+        String msg = "Updated Location: " +
+                Double.toString(location.getLatitude()) + "," +
+                Double.toString(location.getLongitude());
+        //Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
+        // You can now create a LatLng Object for use with maps
+        LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
 
+            uUser.setLocation(mCurrentLocation);
+            userRef.child("latitude").setValue(location.getLatitude());
+            userRef.child("longitude").setValue(location.getLongitude());
+            activeRef.child(mAuth.getCurrentUser().getUid()).child("latitude").setValue(location.getLatitude());
+            activeRef.child(mAuth.getCurrentUser().getUid()).child("longitude").setValue(location.getLongitude());
+
+            //move map camera
+            mMap.moveCamera(CameraUpdateFactory.newLatLng(latLng));
+            mMap.animateCamera(CameraUpdateFactory.zoomTo(13));
     }
 
 }
