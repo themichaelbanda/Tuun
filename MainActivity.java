@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.content.IntentSender;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
+import android.graphics.Bitmap;
 import android.location.Criteria;
 import android.location.Location;
 import android.location.LocationManager;
@@ -33,6 +34,7 @@ import android.widget.Toast;
 
 import com.bumptech.glide.Glide;
 import com.bumptech.glide.request.RequestOptions;
+import com.bumptech.glide.request.target.SimpleTarget;
 import com.google.android.gms.auth.api.Auth;
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
 import com.google.android.gms.common.ConnectionResult;
@@ -57,9 +59,11 @@ import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.UiSettings;
+import com.google.android.gms.maps.model.BitmapDescriptor;
 import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.CameraPosition;
 import com.google.android.gms.maps.model.LatLng;
+import com.google.android.gms.maps.model.LatLngBounds;
 import com.google.android.gms.maps.model.MapStyleOptions;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
@@ -139,6 +143,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private ValueEventListener userRefListener;
     private ChildEventListener markerListener;
     private static final String TAG = MainActivity.class.getSimpleName();
+    private HashMap<String, Marker> hashMapMarker = new HashMap<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -354,7 +359,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     protected void onStart() {
         super.onStart();
         attachAuthStateListener();
-        attachMarkerListener();
+        //attachMarkerListener();
     }
 
     private void sendCustSuppEmail() {
@@ -416,8 +421,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     private void attachAuthStateListener() {
-        activeRef.child(mAuth.getCurrentUser().getUid()).child("name").setValue(uUser.getName());
-        activeRef.child(mAuth.getCurrentUser().getUid()).onDisconnect().removeValue();  //TODO
+        setUserActive();
         if (mAuthStateListener == null) {
             mAuthStateListener = new FirebaseAuth.AuthStateListener() {
                 @Override
@@ -448,13 +452,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     private void attachMarkerListener() {
 
-        final HashMap<String, Marker> hashMapMarker = new HashMap<>();
-
         if (markerListener == null) {
             markerListener = new ChildEventListener() {
                 @Override
                 public void onChildAdded(DataSnapshot dataSnapshot, String s) {
-                    if (dataSnapshot.child("latitude").exists() && (!mUser.getUid().equals(dataSnapshot.getKey()))) {
+                    if (dataSnapshot.child("latitude").exists() && dataSnapshot.child("latitude").exists()) {
+
                         LatLng latLng = new LatLng(((Double) dataSnapshot.child("latitude").getValue()), ((Double) dataSnapshot.child("longitude").getValue()));
                         MarkerOptions markerOptions = new MarkerOptions();
                         markerOptions.position(latLng);
@@ -471,7 +474,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 @Override
                 public void onChildChanged(DataSnapshot dataSnapshot, String s) {
 
-                    if (dataSnapshot.exists() && (!mUser.getUid().equals(dataSnapshot.getKey()))) {
+                    if (dataSnapshot.child("latitude").exists() && dataSnapshot.child("latitude").exists()) {
                         //remove marker
                         Marker marker = hashMapMarker.get(dataSnapshot.getKey().toString());
                         marker.remove();
@@ -491,7 +494,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
                 @Override
                 public void onChildRemoved(DataSnapshot dataSnapshot) {
-                    if (dataSnapshot.exists() && (!mUser.getUid().equals(dataSnapshot.getKey()))) {
+                    if (dataSnapshot.exists()) {
                         Marker marker = hashMapMarker.get(dataSnapshot.getKey().toString());
                         marker.remove();
                         hashMapMarker.remove(dataSnapshot.getKey().toString());
@@ -517,6 +520,11 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             activeRef.removeEventListener(markerListener);
             markerListener = null;
         }
+    }
+
+    protected void setUserActive(){
+        activeRef.child(mAuth.getCurrentUser().getUid()).child("name").setValue(uUser.getName());
+        activeRef.child(mAuth.getCurrentUser().getUid()).onDisconnect().removeValue();
     }
 
     /******************************/
@@ -555,13 +563,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 mMap.setMinZoomPreference(10.0f);
                 UiSettings settings = mMap.getUiSettings();
                 settings.setZoomControlsEnabled(true);
-
             }
         } else {
             buildGoogleApiClient();
             mMap.setMyLocationEnabled(true);
         }
-
+        attachMarkerListener();
     }
 
     protected synchronized void buildGoogleApiClient() {
@@ -725,4 +732,39 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             mMap.animateCamera(CameraUpdateFactory.zoomTo(13));
     }
 
+    private void setMarker(DataSnapshot dataSnapshot) {
+        // When a location update is received, put or update
+        // its value in mMarkers, which contains all the markers
+        // for locations received, so that we can build the
+        // boundaries required to show them all on the map at once
+        String key = dataSnapshot.getKey();
+        HashMap<String, Object> value = (HashMap<String, Object>) dataSnapshot.getValue();
+        double lat = Double.parseDouble(value.get("latitude").toString());
+        double lng = Double.parseDouble(value.get("longitude").toString());
+        LatLng location = new LatLng(lat, lng);
+        if (!hashMapMarker.containsKey(key)) {
+            hashMapMarker.put(key, mMap.addMarker(new MarkerOptions().title(key).position(location)));
+        } else {
+            hashMapMarker.get(key).setPosition(location);
+        }
+        LatLngBounds.Builder builder = new LatLngBounds.Builder();
+        for (Marker marker : hashMapMarker.values()) {
+            builder.include(marker.getPosition());
+        }
+        mMap.animateCamera(CameraUpdateFactory.newLatLngBounds(builder.build(), 300));
+    }
+
+    /* private void loadMarkerIcon(final Marker marker) {
+        Glide.with(this).load(uUser.getPhotoUrl()).asBitmap().fitCenter().into(new SimpleTarget<Bitmap>() {
+            @Override
+            public void onResourceReady(Bitmap bitmap, GlideAnimation<? super Bitmap> glideAnimation) {
+                BitmapDescriptor icon = BitmapDescriptorFactory.fromBitmap(bitmap);
+                marker.setIcon(icon);
+
+                && (!mUser.getUid().equals(dataSnapshot.getKey()))
+                TODO doesnt load pre-existing markers
+            }
+        });
+    }
+*/
 }
