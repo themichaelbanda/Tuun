@@ -1,12 +1,11 @@
 package com.penguinsonabeach.tuun;
 
+import android.Manifest;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
-import android.content.IntentSender;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
-import android.graphics.Bitmap;
-import android.location.Criteria;
 import android.location.Location;
 import android.location.LocationManager;
 import android.net.Uri;
@@ -18,6 +17,7 @@ import android.support.v13.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v4.widget.DrawerLayout;
 import android.support.v7.app.ActionBarDrawerToggle;
+import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
@@ -34,13 +34,10 @@ import android.widget.Toast;
 
 import com.bumptech.glide.Glide;
 import com.bumptech.glide.request.RequestOptions;
-import com.bumptech.glide.request.target.SimpleTarget;
 import com.google.android.gms.auth.api.Auth;
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
 import com.google.android.gms.common.ConnectionResult;
-import com.google.android.gms.common.api.ApiException;
 import com.google.android.gms.common.api.GoogleApiClient;
-import com.google.android.gms.common.api.ResolvableApiException;
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationCallback;
 import com.google.android.gms.location.LocationListener;
@@ -61,7 +58,6 @@ import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.UiSettings;
 import com.google.android.gms.maps.model.BitmapDescriptor;
 import com.google.android.gms.maps.model.BitmapDescriptorFactory;
-import com.google.android.gms.maps.model.CameraPosition;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.LatLngBounds;
 import com.google.android.gms.maps.model.MapStyleOptions;
@@ -81,8 +77,6 @@ import com.google.firebase.storage.FirebaseStorage;
 import com.google.firebase.storage.StorageReference;
 import com.google.firebase.storage.UploadTask;
 
-import java.text.DateFormat;
-import java.util.Date;
 import java.util.HashMap;
 
 import static com.google.android.gms.location.LocationServices.getFusedLocationProviderClient;
@@ -90,36 +84,70 @@ import static com.google.android.gms.location.LocationServices.getFusedLocationP
 
 public class MainActivity extends AppCompatActivity implements OnMapReadyCallback, GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener, LocationListener {
 
+    private static final String TAG = MainActivity.class.getSimpleName();
+
     private FirebaseAuth mAuth;
     private FirebaseAuth.AuthStateListener mAuthStateListener;
     private FirebaseUser mUser;
     private GoogleApiClient mGoogleApiClient;
     private static final int RC_SIGN_IN = 1;
     private static final int RC_PHOTO_PICKER = 2;
+
+    /**
+     * Code used in requesting runtime permissions.
+     */
+    private static final int REQUEST_PERMISSIONS_REQUEST_CODE = 34;
+
+    /**
+     * Constant used in the location settings dialog.
+     */
+    private static final int REQUEST_CHECK_SETTINGS = 0x1;
+
     /**
      * The desired interval for location updates. Inexact. Updates may be more or less frequent.
      */
     private static final long UPDATE_INTERVAL_IN_MILLISECONDS = 10000;
+
     /**
      * The fastest rate for active location updates. Exact. Updates will never be more frequent
      * than this value.
      */
     private static final long FASTEST_UPDATE_INTERVAL_IN_MILLISECONDS =
             UPDATE_INTERVAL_IN_MILLISECONDS / 2;
+
+    // Keys for storing activity state in the Bundle.
+    private final static String KEY_LOCATION = "location";
+
     /**
-     * Represents a geographical location.
+     * Provides access to the Fused Location Provider API.
      */
-    private Location mCurrentLocation;
+    private FusedLocationProviderClient mFusedLocationClient;
+
+    /**
+     * Provides access to the Location Settings API.
+     */
+    private SettingsClient mSettingsClient;
+
+    /**
+     * Stores parameters for requests to the FusedLocationProviderApi.
+     */
+    private LocationRequest mLocationRequest;
 
     /**
      * Stores the types of location services the client is interested in using. Used for checking
      * settings to determine if the device has optimal location settings.
      */
     private LocationSettingsRequest mLocationSettingsRequest;
+
     /**
-     * Provides access to the Location Settings API.
+     * Callback for Location events.
      */
-    private SettingsClient mSettingsClient;
+    private LocationCallback mLocationCallback;
+
+    /**
+     * Represents a geographical location.
+     */
+    private Location mCurrentLocation;
 
     private ListView mDrawerList;
     private TextView mTitle;
@@ -131,18 +159,15 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private GeoDataClient mGeoDataClient;
     private PlaceDetectionClient mPlaceDetectionClient;
     private FusedLocationProviderClient mFusedLocationProviderClient;
-    private LocationRequest mLocationRequest;
-    private Marker mCurrLocationMarker;
     private GoogleMap mMap;
     public User uUser;
     private ImageView profilePicture;
     protected FirebaseDatabase database;
-    protected DatabaseReference myRef, userRef, activeRef;
+    protected DatabaseReference myRef, userRef;
     private FirebaseStorage mFirebaseStorage;
     private StorageReference mPhotosStorageReference;
     private ValueEventListener userRefListener;
     private ChildEventListener markerListener;
-    private static final String TAG = MainActivity.class.getSimpleName();
     private HashMap<String, Marker> hashMapMarker = new HashMap<>();
 
     @Override
@@ -156,25 +181,23 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         database = FirebaseDatabase.getInstance();
         mFirebaseStorage = FirebaseStorage.getInstance();
 
+        // User Object initialization, this object is maintained to update firebase database easily
         mUser = mAuth.getCurrentUser();
-
-        // Database instantiation
-        database = FirebaseDatabase.getInstance();
 
         // Enable data persistence on connection issues
         //database.setPersistenceEnabled(true);
 
         // Database reference instantiation
         myRef = database.getReference("users");
-        activeRef = database.getReference("active_users");
         userRef = myRef.child(mAuth.getCurrentUser().getUid());
+
+        // Storage reference instantiation for Image URL
         mPhotosStorageReference = mFirebaseStorage.getReference().child("user_photos");
 
         profilePicture = findViewById(R.id.profilePictureImg);
         mTitle = this.findViewById(R.id.hNameTextView);
 
         uUser = new User(mUser.getEmail(), mUser.getDisplayName(), null, null);
-
 
         // Check if user is in DB and create user object if not create in db and object
         attachDatabaseReadListener();
@@ -186,8 +209,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         mPlaceDetectionClient = Places.getPlaceDetectionClient(this, null);
 
         // Construct a FusedLocationProviderClient.
-        //mFusedLocationProviderClient = getFusedLocationProviderClient(this);
         mFusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this);
+
         mSettingsClient = LocationServices.getSettingsClient(this);
 
         // Configure sign-in to request the user's ID, email address, and basic
@@ -209,9 +232,13 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 .addApi(Auth.GOOGLE_SIGN_IN_API, gso)
                 .build();
 
+        // Update values using data stored in the Bundle.
+        updateValuesFromBundle(savedInstanceState);
+
         // Kick off map features
         setUpMap();
         startLocationUpdates();
+        setUserActive();
     }
 
     @Override
@@ -234,6 +261,25 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             });
         }
 
+    }
+
+    /**
+     * Updates fields based on data stored in the bundle.
+     *
+     * @param savedInstanceState The activity state saved in the Bundle.
+     */
+    private void updateValuesFromBundle(Bundle savedInstanceState) {
+        if (savedInstanceState != null) {
+
+            // Update the value of mCurrentLocation from the Bundle and update the UI to show the
+            // correct latitude and longitude.
+            if (savedInstanceState.keySet().contains(KEY_LOCATION)) {
+                // Since KEY_LOCATION was found in the Bundle, we can be sure that mCurrentLocation
+                // is not null.
+                mCurrentLocation = savedInstanceState.getParcelable(KEY_LOCATION);
+            }
+
+        }
     }
 
     @Override
@@ -301,9 +347,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                         sendCustSuppEmail();
                         break;
                     case 7:
-                        mAuth.getInstance().signOut();
-                        Intent sOut = new Intent(MainActivity.this, LoginActivity.class);
-                        startActivity(sOut);
+                        signOut();
                         break;
                     default:
                         Toast.makeText(MainActivity.this, "Time for an upgrade!", Toast.LENGTH_SHORT).show();
@@ -312,6 +356,11 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 }
             }
         });
+    }
+
+    public void onSaveInstanceState(Bundle savedInstanceState) {
+        savedInstanceState.putParcelable(KEY_LOCATION, mCurrentLocation);
+        super.onSaveInstanceState(savedInstanceState);
     }
 
     @Override
@@ -343,23 +392,19 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     @Override
-    protected void onPause() {
-        super.onPause();
+    protected void onStop() {
+        super.onStop();
         detachDatabaseReadListener();
         detachAuthStateListener();
         detachMarkerListener();
     }
 
     @Override
-    protected void onResume() {
-        super.onResume();
-    }
-
-    @Override
     protected void onStart() {
         super.onStart();
+        attachDatabaseReadListener();
         attachAuthStateListener();
-        //attachMarkerListener();
+        attachMarkerListener();
     }
 
     private void sendCustSuppEmail() {
@@ -371,6 +416,16 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         startActivity(Intent.createChooser(emailIntent, "Send mail..."));
     }
+
+    // Method to handle appropriate actions when user signs out
+    private void signOut(){
+        userRef.child("online").setValue("False");
+        mFusedLocationProviderClient.removeLocationUpdates(mLocationCallback);
+        mAuth.getInstance().signOut();
+        Intent sOut = new Intent(MainActivity.this, LoginActivity.class);
+        startActivity(sOut);
+    }
+
 
 
     /******************************/
@@ -421,7 +476,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     private void attachAuthStateListener() {
-        setUserActive();
         if (mAuthStateListener == null) {
             mAuthStateListener = new FirebaseAuth.AuthStateListener() {
                 @Override
@@ -456,49 +510,17 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             markerListener = new ChildEventListener() {
                 @Override
                 public void onChildAdded(DataSnapshot dataSnapshot, String s) {
-                    if (dataSnapshot.child("latitude").exists() && dataSnapshot.child("latitude").exists()) {
-
-                        LatLng latLng = new LatLng(((Double) dataSnapshot.child("latitude").getValue()), ((Double) dataSnapshot.child("longitude").getValue()));
-                        MarkerOptions markerOptions = new MarkerOptions();
-                        markerOptions.position(latLng);
-                        markerOptions.title(dataSnapshot.child("name").getValue().toString());
-                        markerOptions.icon(BitmapDescriptorFactory.fromResource(R.drawable.mitsu));
-                        //markerOptions.icon(BitmapDescriptorFactory.fromPath(uUser.getPhotoUrl())).
-                        mCurrLocationMarker = mMap.addMarker(markerOptions);
-
-                        hashMapMarker.put(dataSnapshot.getKey().toString(), mCurrLocationMarker);
-                    }
-
+                    setMarker(dataSnapshot);
                 }
 
                 @Override
                 public void onChildChanged(DataSnapshot dataSnapshot, String s) {
-
-                    if (dataSnapshot.child("latitude").exists() && dataSnapshot.child("latitude").exists()) {
-                        //remove marker
-                        Marker marker = hashMapMarker.get(dataSnapshot.getKey().toString());
-                        marker.remove();
-                        hashMapMarker.remove(dataSnapshot.getKey().toString());
-
-                        // re-add marker
-                        LatLng latLng = new LatLng(((Double) dataSnapshot.child("latitude").getValue()), ((Double) dataSnapshot.child("longitude").getValue()));
-                        MarkerOptions markerOptions = new MarkerOptions();
-                        markerOptions.position(latLng);
-                        markerOptions.title(dataSnapshot.child("name").getValue().toString());
-                        markerOptions.icon(BitmapDescriptorFactory.fromResource(R.drawable.mitsu));
-                        mCurrLocationMarker = mMap.addMarker(markerOptions);
-                        hashMapMarker.put(dataSnapshot.getKey().toString(), mCurrLocationMarker);
-
-                    }
+                    setMarker(dataSnapshot);
                 }
 
                 @Override
                 public void onChildRemoved(DataSnapshot dataSnapshot) {
-                    if (dataSnapshot.exists()) {
-                        Marker marker = hashMapMarker.get(dataSnapshot.getKey().toString());
-                        marker.remove();
-                        hashMapMarker.remove(dataSnapshot.getKey().toString());
-                    }
+                   removeMarker(dataSnapshot);
                 }
 
                 @Override
@@ -508,24 +530,26 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
                 @Override
                 public void onCancelled(DatabaseError databaseError) {
-
+                    Log.d(TAG, "Failed to read value.", databaseError.toException());
                 }
             };
-            activeRef.addChildEventListener(markerListener);
+            myRef.addChildEventListener(markerListener);
         }
     }
 
     private void detachMarkerListener() {
         if (markerListener != null) {
-            activeRef.removeEventListener(markerListener);
+            userRef.removeEventListener(markerListener);
             markerListener = null;
         }
     }
 
     protected void setUserActive(){
-        activeRef.child(mAuth.getCurrentUser().getUid()).child("name").setValue(uUser.getName());
-        activeRef.child(mAuth.getCurrentUser().getUid()).onDisconnect().removeValue();
+        userRef.child("online").setValue("True");
+        userRef.child("online").onDisconnect().setValue("False");
     }
+
+
 
     /******************************/
     /*
@@ -568,43 +592,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             buildGoogleApiClient();
             mMap.setMyLocationEnabled(true);
         }
-        attachMarkerListener();
+        attachMarkerListener(); //TODO does nothing really at the moment
     }
-
-    protected synchronized void buildGoogleApiClient() {
-        mGoogleApiClient = new GoogleApiClient.Builder(this)
-                .addConnectionCallbacks(this)
-                .addOnConnectionFailedListener(this)
-                .addApi(LocationServices.API)
-                .build();
-        mGoogleApiClient.connect();
-    }
-
-    // TODO contains location updates
-    @Override
-    public void onConnected(@Nullable Bundle bundle) {
-        mLocationRequest = new LocationRequest();
-        mLocationRequest.setInterval(1000);
-        mLocationRequest.setFastestInterval(1000);
-        mLocationRequest.setPriority(LocationRequest.PRIORITY_BALANCED_POWER_ACCURACY);
-        if (ContextCompat.checkSelfPermission(this,
-                android.Manifest.permission.ACCESS_FINE_LOCATION)
-                == PackageManager.PERMISSION_GRANTED) {
-            //LocationServices.FusedLocationApi.getLastLocation(mGoogleApiClient);
-        }
-
-    }
-
-    @Override
-    public void onConnectionSuspended(int i) {
-
-    }
-
-    @Override
-    public void onConnectionFailed(@NonNull ConnectionResult connectionResult) {
-    }
-
-    public static final int MY_PERMISSIONS_REQUEST_LOCATION = 99;
 
     public boolean checkLocationPermission() {
         if (ContextCompat.checkSelfPermission(this,
@@ -618,18 +607,19 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 // Show an explanation to the user *asynchronously* -- don't block
                 // this thread waiting for the user's response! After the user
                 // sees the explanation, try again to request the permission.
+                new AlertDialog.Builder(this)
+                        .setTitle("Location Permission")
+                        .setMessage("Location is needed for this application to run properly.")
+                        .setPositiveButton("Ok", new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialogInterface, int i) {
+                                //Prompt the user once explanation has been shown
+                                requestPermissions(new String[] {Manifest.permission.ACCESS_FINE_LOCATION},
+                                        MY_PERMISSIONS_REQUEST_LOCATION);}
+                        })
+                        .create()
+                        .show();
 
-                //Prompt the user once explanation has been shown
-                ActivityCompat.requestPermissions(this,
-                        new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION},
-                        MY_PERMISSIONS_REQUEST_LOCATION);
-
-
-            } else {
-                // No explanation needed, we can request the permission.
-                ActivityCompat.requestPermissions(this,
-                        new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION},
-                        MY_PERMISSIONS_REQUEST_LOCATION);
             }
             return false;
         } else {
@@ -637,8 +627,33 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
     }
 
+    protected synchronized void buildGoogleApiClient() {
+        mGoogleApiClient = new GoogleApiClient.Builder(this)
+                .addConnectionCallbacks(this)
+                .addOnConnectionFailedListener(this)
+                .addApi(LocationServices.API)
+                .build();
+        mGoogleApiClient.connect();
+    }
+
+    @Override
+    public void onConnected(@Nullable Bundle bundle) {
+    }
+
+    @Override
+    public void onConnectionSuspended(int i) {
+
+    }
+
+    @Override
+    public void onConnectionFailed(@NonNull ConnectionResult connectionResult) {
+    }
+
+    public static final int MY_PERMISSIONS_REQUEST_LOCATION = 99;
+
     @Override
     public void onRequestPermissionsResult(int requestCode, String permissions[], int[] grantResults) {
+
         switch (requestCode) {
             case MY_PERMISSIONS_REQUEST_LOCATION: {
                 // If request is cancelled, the result arrays are empty.
@@ -660,7 +675,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 } else {
 
                     // Permission denied, Disable the functionality that depends on this permission.
-                    Toast.makeText(this, "permission denied", Toast.LENGTH_LONG).show();
+                    Toast.makeText(this, "Location permission denied", Toast.LENGTH_LONG).show();
+                    mFusedLocationProviderClient.removeLocationUpdates(mLocationCallback);
+                    finish();
                 }
                 return;
             }
@@ -670,7 +687,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
     }
 
-    // Trigger new location updates at interval/newest version
+
+    // Trigger new location updates at interval/newest version TODO fix location update and marker behaviour
     protected void startLocationUpdates() {
 
         // Create the location request to start receiving updates
@@ -685,12 +703,15 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         LocationSettingsRequest locationSettingsRequest = builder.build();
 
         // Check whether location settings are satisfied
-        // https://developers.google.com/android/reference/com/google/android/gms/location/SettingsClient
         SettingsClient settingsClient = LocationServices.getSettingsClient(this);
         settingsClient.checkLocationSettings(locationSettingsRequest);
 
         // new Google API SDK v11 uses getFusedLocationProviderClient(this)
-        if (android.support.v4.app.ActivityCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && android.support.v4.app.ActivityCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+       if (android.support.v4.app.ActivityCompat.checkSelfPermission(this,
+               android.Manifest.permission.ACCESS_FINE_LOCATION)
+               != PackageManager.PERMISSION_GRANTED
+               && android.support.v4.app.ActivityCompat.checkSelfPermission(this,
+               android.Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             // TODO: Consider calling
             //    ActivityCompat#requestPermissions
             // here to request the missing permissions, and then overriding
@@ -700,12 +721,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             // for ActivityCompat#requestPermissions for more details.
             return;
         }
-        getFusedLocationProviderClient(this).requestLocationUpdates(mLocationRequest, new LocationCallback() {
+        getFusedLocationProviderClient(this).requestLocationUpdates(mLocationRequest, mLocationCallback = new LocationCallback() {
                     @Override
                     public void onLocationResult(LocationResult locationResult) {
-                        // do work here
                         onLocationChanged(locationResult.getLastLocation());
-
                     }
                 },
                 Looper.myLooper());
@@ -713,7 +732,14 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     @Override
     public void onLocationChanged(Location location) {
+
+        // GPS may be turned off
+        if (location == null) {
+            return;
+        }
+
         // New location has now been determined
+        mCurrentLocation = location;
         String msg = "Updated Location: " +
                 Double.toString(location.getLatitude()) + "," +
                 Double.toString(location.getLongitude());
@@ -724,12 +750,22 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             uUser.setLocation(mCurrentLocation);
             userRef.child("latitude").setValue(location.getLatitude());
             userRef.child("longitude").setValue(location.getLongitude());
-            activeRef.child(mAuth.getCurrentUser().getUid()).child("latitude").setValue(location.getLatitude());
-            activeRef.child(mAuth.getCurrentUser().getUid()).child("longitude").setValue(location.getLongitude());
 
             //move map camera
             mMap.moveCamera(CameraUpdateFactory.newLatLng(latLng));
             mMap.animateCamera(CameraUpdateFactory.zoomTo(13));
+
+    }
+
+    // Check if Location is turned on
+    public boolean CheckGpsStatus(){
+        Boolean GpsStatus;
+
+        LocationManager locationManager = (LocationManager)getApplicationContext().getSystemService(Context.LOCATION_SERVICE);
+
+        GpsStatus = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER);
+
+        return GpsStatus;
     }
 
     private void setMarker(DataSnapshot dataSnapshot) {
@@ -742,16 +778,30 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         double lat = Double.parseDouble(value.get("latitude").toString());
         double lng = Double.parseDouble(value.get("longitude").toString());
         LatLng location = new LatLng(lat, lng);
-        if (!hashMapMarker.containsKey(key)) {
-            hashMapMarker.put(key, mMap.addMarker(new MarkerOptions().title(key).position(location)));
-        } else {
+        if (!hashMapMarker.containsKey(key) && key != mAuth.getCurrentUser().getUid() && !dataSnapshot.child("online").equals("False") ) {
+            hashMapMarker.put(key, mMap.addMarker(new MarkerOptions().title(dataSnapshot.child("name").getValue().toString()).position(location).icon(BitmapDescriptorFactory.fromResource(R.drawable.mitsu))));
+        } else if(key != mAuth.getCurrentUser().getUid() && !dataSnapshot.child("online").equals("False")) {
             hashMapMarker.get(key).setPosition(location);
         }
         LatLngBounds.Builder builder = new LatLngBounds.Builder();
         for (Marker marker : hashMapMarker.values()) {
             builder.include(marker.getPosition());
         }
-        mMap.animateCamera(CameraUpdateFactory.newLatLngBounds(builder.build(), 300));
+    }
+
+    private void removeMarker(DataSnapshot dataSnapshot){
+        if (dataSnapshot.exists()) {
+            Marker marker = hashMapMarker.get(dataSnapshot.getKey().toString());
+            marker.remove();
+            hashMapMarker.remove(dataSnapshot.getKey().toString());
+        }
+    }
+    
+
+    // Tracker Service
+    private void startTrackerService() {
+        startService(new Intent(this, TrackerService.class));
+        finish();
     }
 
     /* private void loadMarkerIcon(final Marker marker) {
