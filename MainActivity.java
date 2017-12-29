@@ -490,7 +490,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                         // User is signed in
                         Log.d(TAG, "onAuthStateChanged:signed_in:" + user.getUid());
                     }
-                    //...perform next task such as MainActivity
                 }
             };
             mAuth.addAuthStateListener(mAuthStateListener);
@@ -587,6 +586,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 mMap.setMinZoomPreference(10.0f);
                 UiSettings settings = mMap.getUiSettings();
                 settings.setZoomControlsEnabled(true);
+
             }
         } else {
             buildGoogleApiClient();
@@ -752,8 +752,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             userRef.child("longitude").setValue(location.getLongitude());
 
             //move map camera
-            mMap.moveCamera(CameraUpdateFactory.newLatLng(latLng));
-            mMap.animateCamera(CameraUpdateFactory.zoomTo(13));
+           mMap.moveCamera(CameraUpdateFactory.newLatLng(latLng));
+            //mMap.animateCamera(CameraUpdateFactory.zoomTo(13));
 
     }
 
@@ -778,9 +778,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         double lat = Double.parseDouble(value.get("latitude").toString());
         double lng = Double.parseDouble(value.get("longitude").toString());
         LatLng location = new LatLng(lat, lng);
-        if (!hashMapMarker.containsKey(key) && key != mAuth.getCurrentUser().getUid() && !dataSnapshot.child("online").equals("False") ) {
+        if ((!hashMapMarker.containsKey(key)) && (key != mAuth.getCurrentUser().getUid()) && (dataSnapshot.child("online").equals("True")) ) {
             hashMapMarker.put(key, mMap.addMarker(new MarkerOptions().title(dataSnapshot.child("name").getValue().toString()).position(location).icon(BitmapDescriptorFactory.fromResource(R.drawable.mitsu))));
-        } else if(key != mAuth.getCurrentUser().getUid() && !dataSnapshot.child("online").equals("False")) {
+        } else if((key != mAuth.getCurrentUser().getUid()) && (dataSnapshot.child("online").equals("True"))){
             hashMapMarker.get(key).setPosition(location);
         }
         LatLngBounds.Builder builder = new LatLngBounds.Builder();
@@ -795,13 +795,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             marker.remove();
             hashMapMarker.remove(dataSnapshot.getKey().toString());
         }
-    }
-    
-
-    // Tracker Service
-    private void startTrackerService() {
-        startService(new Intent(this, TrackerService.class));
-        finish();
     }
 
     /* private void loadMarkerIcon(final Marker marker) {
