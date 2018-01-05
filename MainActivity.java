@@ -1,16 +1,21 @@
 package com.penguinsonabeach.tuun;
 
 import android.Manifest;
+import android.app.Activity;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.location.Criteria;
 import android.location.Location;
 import android.location.LocationManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Looper;
+import android.support.annotation.DrawableRes;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.v13.app.ActivityCompat;
@@ -20,10 +25,13 @@ import android.support.v7.app.ActionBarDrawerToggle;
 import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.KeyEvent;
+import android.view.LayoutInflater;
 import android.view.MenuItem;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.ImageView;
@@ -58,6 +66,7 @@ import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.UiSettings;
 import com.google.android.gms.maps.model.BitmapDescriptor;
 import com.google.android.gms.maps.model.BitmapDescriptorFactory;
+import com.google.android.gms.maps.model.CameraPosition;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.LatLngBounds;
 import com.google.android.gms.maps.model.MapStyleOptions;
@@ -78,6 +87,8 @@ import com.google.firebase.storage.StorageReference;
 import com.google.firebase.storage.UploadTask;
 
 import java.util.HashMap;
+
+import de.hdodenhof.circleimageview.CircleImageView;
 
 import static com.google.android.gms.location.LocationServices.getFusedLocationProviderClient;
 
@@ -155,6 +166,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private ActionBarDrawerToggle mDrawerToggle;
     private DrawerLayout mDrawerLayout;
     private String mActivityTitle;
+    private final String default_img = "https://firebasestorage.googleapis.com/v0/b/tuun-67689.appspot.com/o/user_photos%2Fno_icon.png?alt=media&token=85744938-bef8-4e56-bbbb-ab357393f8ae";
     final Intent emailIntent = new Intent(android.content.Intent.ACTION_SEND);
     private GeoDataClient mGeoDataClient;
     private PlaceDetectionClient mPlaceDetectionClient;
@@ -197,7 +209,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         profilePicture = findViewById(R.id.profilePictureImg);
         mTitle = this.findViewById(R.id.hNameTextView);
 
-        uUser = new User(mUser.getEmail(), mUser.getDisplayName(), null, null);
+        uUser = new User(mUser.getEmail(), mUser.getDisplayName(), null, default_img);
 
         // Check if user is in DB and create user object if not create in db and object
         attachDatabaseReadListener();
@@ -418,14 +430,15 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     // Method to handle appropriate actions when user signs out
-    private void signOut(){
+    private void signOut() {
         userRef.child("online").setValue("False");
-        mFusedLocationProviderClient.removeLocationUpdates(mLocationCallback);
+        if(!getFusedLocationProviderClient(this).equals(null)){
+        getFusedLocationProviderClient(this).removeLocationUpdates(mLocationCallback);}
+        detachMarkerListener();
         mAuth.getInstance().signOut();
         Intent sOut = new Intent(MainActivity.this, LoginActivity.class);
         startActivity(sOut);
     }
-
 
 
     /******************************/
@@ -433,6 +446,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     /*    Firebase Functions
     /*
     /******************************/
+
     private void attachDatabaseReadListener() {
         if (userRefListener == null) {
             userRefListener = new ValueEventListener() {
@@ -519,7 +533,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
                 @Override
                 public void onChildRemoved(DataSnapshot dataSnapshot) {
-                   removeMarker(dataSnapshot);
                 }
 
                 @Override
@@ -538,16 +551,15 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     private void detachMarkerListener() {
         if (markerListener != null) {
-            userRef.removeEventListener(markerListener);
+            myRef.removeEventListener(markerListener);
             markerListener = null;
         }
     }
 
-    protected void setUserActive(){
+    protected void setUserActive() {
         userRef.child("online").setValue("True");
         userRef.child("online").onDisconnect().setValue("False");
     }
-
 
 
     /******************************/
@@ -560,6 +572,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private void setUpMap() {
 
         if (android.os.Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            Log.d(TAG,"Running Marshmellow or Higher Loop Entered True");
             checkLocationPermission();
         }
         SupportMapFragment mapFragment =
@@ -586,24 +599,24 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 mMap.setMinZoomPreference(10.0f);
                 UiSettings settings = mMap.getUiSettings();
                 settings.setZoomControlsEnabled(true);
-
+                centerMap();
             }
         } else {
             buildGoogleApiClient();
             mMap.setMyLocationEnabled(true);
         }
-        attachMarkerListener(); //TODO does nothing really at the moment
+        attachMarkerListener();
     }
 
     public boolean checkLocationPermission() {
         if (ContextCompat.checkSelfPermission(this,
                 android.Manifest.permission.ACCESS_FINE_LOCATION)
                 != PackageManager.PERMISSION_GRANTED) {
-
+                Log.d(TAG,"First loop for location permission came up false");
             // Asking user if explanation is needed
             if (ActivityCompat.shouldShowRequestPermissionRationale(this,
                     android.Manifest.permission.ACCESS_FINE_LOCATION)) {
-
+                Log.d(TAG,"Second loop for location permission for FINE location");
                 // Show an explanation to the user *asynchronously* -- don't block
                 // this thread waiting for the user's response! After the user
                 // sees the explanation, try again to request the permission.
@@ -614,8 +627,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                             @Override
                             public void onClick(DialogInterface dialogInterface, int i) {
                                 //Prompt the user once explanation has been shown
-                                requestPermissions(new String[] {Manifest.permission.ACCESS_FINE_LOCATION},
-                                        MY_PERMISSIONS_REQUEST_LOCATION);}
+                                requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
+                                        MY_PERMISSIONS_REQUEST_LOCATION);
+                            }
                         })
                         .create()
                         .show();
@@ -669,6 +683,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                         if (mGoogleApiClient == null) {
                             buildGoogleApiClient();
                         }
+                        setUpMap();
+                        startLocationUpdates();
                         mMap.setMyLocationEnabled(true);
                     }
 
@@ -676,8 +692,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
                     // Permission denied, Disable the functionality that depends on this permission.
                     Toast.makeText(this, "Location permission denied", Toast.LENGTH_LONG).show();
-                    mFusedLocationProviderClient.removeLocationUpdates(mLocationCallback);
-                    finish();
+                    signOut();
+                    //mFusedLocationProviderClient.removeLocationUpdates(mLocationCallback);
+                    //finish();
                 }
                 return;
             }
@@ -707,11 +724,11 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         settingsClient.checkLocationSettings(locationSettingsRequest);
 
         // new Google API SDK v11 uses getFusedLocationProviderClient(this)
-       if (android.support.v4.app.ActivityCompat.checkSelfPermission(this,
-               android.Manifest.permission.ACCESS_FINE_LOCATION)
-               != PackageManager.PERMISSION_GRANTED
-               && android.support.v4.app.ActivityCompat.checkSelfPermission(this,
-               android.Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+        if (android.support.v4.app.ActivityCompat.checkSelfPermission(this,
+                android.Manifest.permission.ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED
+                && android.support.v4.app.ActivityCompat.checkSelfPermission(this,
+                android.Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             // TODO: Consider calling
             //    ActivityCompat#requestPermissions
             // here to request the missing permissions, and then overriding
@@ -745,27 +762,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 Double.toString(location.getLongitude());
         //Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
         // You can now create a LatLng Object for use with maps
-        LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
+        //LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
 
-            uUser.setLocation(mCurrentLocation);
-            userRef.child("latitude").setValue(location.getLatitude());
-            userRef.child("longitude").setValue(location.getLongitude());
+        uUser.setLocation(mCurrentLocation);
+        userRef.child("latitude").setValue(location.getLatitude());
+        userRef.child("longitude").setValue(location.getLongitude());
 
-            //move map camera
-           mMap.moveCamera(CameraUpdateFactory.newLatLng(latLng));
-            //mMap.animateCamera(CameraUpdateFactory.zoomTo(13));
-
-    }
-
-    // Check if Location is turned on
-    public boolean CheckGpsStatus(){
-        Boolean GpsStatus;
-
-        LocationManager locationManager = (LocationManager)getApplicationContext().getSystemService(Context.LOCATION_SERVICE);
-
-        GpsStatus = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER);
-
-        return GpsStatus;
     }
 
     private void setMarker(DataSnapshot dataSnapshot) {
@@ -778,36 +780,85 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         double lat = Double.parseDouble(value.get("latitude").toString());
         double lng = Double.parseDouble(value.get("longitude").toString());
         LatLng location = new LatLng(lat, lng);
-        if ((!hashMapMarker.containsKey(key)) && (key != mAuth.getCurrentUser().getUid()) && (dataSnapshot.child("online").equals("True")) ) {
-            hashMapMarker.put(key, mMap.addMarker(new MarkerOptions().title(dataSnapshot.child("name").getValue().toString()).position(location).icon(BitmapDescriptorFactory.fromResource(R.drawable.mitsu))));
-        } else if((key != mAuth.getCurrentUser().getUid()) && (dataSnapshot.child("online").equals("True"))){
+        if ((!hashMapMarker.containsKey(key)) && (!key.equals(mAuth.getCurrentUser().getUid())) && ((dataSnapshot.child("online").getValue().equals("True")))) {
+            Bitmap customIcon = createCustomMarker(this,dataSnapshot.child("photoUrl").getValue().toString(),dataSnapshot.child("name").getValue().toString());
+            hashMapMarker.put(key, mMap.addMarker(new MarkerOptions().title(dataSnapshot.child("name").getValue().toString()).position(location).icon((BitmapDescriptorFactory.fromBitmap(
+                    customIcon)))));
+            Log.d(TAG, "Loop has added user " + key + " added to hashmap. User key is : " + mAuth.getCurrentUser().getUid() + " Boolean is set to:" + dataSnapshot.child("online").getValue().equals("True"));
+            Log.d(TAG, "Validation 1:" + hashMapMarker.containsKey(key) + (key.equals(mAuth.getCurrentUser().getUid())) + ((dataSnapshot.child("online").getValue().equals("True"))));
+        }
+        if ((hashMapMarker.containsKey(key)) && (dataSnapshot.child("online").getValue().equals("False"))) {
+            Marker marker = hashMapMarker.get(key);
+            marker.remove();
+            hashMapMarker.remove(key);
+        } else if (!key.equals(mAuth.getCurrentUser().getUid()) && (dataSnapshot.child("online").getValue().equals("True"))) {
             hashMapMarker.get(key).setPosition(location);
         }
         LatLngBounds.Builder builder = new LatLngBounds.Builder();
         for (Marker marker : hashMapMarker.values()) {
             builder.include(marker.getPosition());
         }
+        /*if(!hashMapMarker.isEmpty()){
+        mMap.animateCamera(CameraUpdateFactory.newLatLngBounds(builder.build(), 300));}
+        Option to build viewer that fits all current markers*/
     }
 
-    private void removeMarker(DataSnapshot dataSnapshot){
-        if (dataSnapshot.exists()) {
-            Marker marker = hashMapMarker.get(dataSnapshot.getKey().toString());
-            marker.remove();
-            hashMapMarker.remove(dataSnapshot.getKey().toString());
+    //method to center camera on current user
+    private void centerMap() {
+
+
+        LocationManager locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+        Criteria criteria = new Criteria();
+
+        if (android.support.v4.app.ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && android.support.v4.app.ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            // TODO: Consider calling
+            //    ActivityCompat#requestPermissions
+            // here to request the missing permissions, and then overriding
+            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+            //                                          int[] grantResults)
+            // to handle the case where the user grants the permission. See the documentation
+            // for ActivityCompat#requestPermissions for more details.
+            return;
+        }
+        Location location = locationManager.getLastKnownLocation(locationManager.getBestProvider(criteria, false));
+        if (location != null)
+        {
+            mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(
+                    new LatLng(location.getLatitude(), location.getLongitude()), 11));;
+
+            CameraPosition cameraPosition = new CameraPosition.Builder()
+                    .target(new LatLng(location.getLatitude(), location.getLongitude()))      // Sets the center of the map to location user
+                    .zoom(14)                   // Sets the zoom
+                    .bearing(0)                // Sets the orientation of the camera to east
+                    .tilt(0)                   // Sets the tilt of the camera to 30 degrees
+                    .build();                   // Creates a CameraPosition from the builder
+            mMap.animateCamera(CameraUpdateFactory.newCameraPosition(cameraPosition));
         }
     }
 
-    /* private void loadMarkerIcon(final Marker marker) {
-        Glide.with(this).load(uUser.getPhotoUrl()).asBitmap().fitCenter().into(new SimpleTarget<Bitmap>() {
-            @Override
-            public void onResourceReady(Bitmap bitmap, GlideAnimation<? super Bitmap> glideAnimation) {
-                BitmapDescriptor icon = BitmapDescriptorFactory.fromBitmap(bitmap);
-                marker.setIcon(icon);
 
-                && (!mUser.getUid().equals(dataSnapshot.getKey()))
-                TODO doesnt load pre-existing markers
-            }
-        });
+    public static Bitmap createCustomMarker(Context context, String URL, String _name) {
+
+        View marker = ((LayoutInflater) context.getSystemService(Context.LAYOUT_INFLATER_SERVICE)).inflate(R.layout.custom_marker_layout, null);
+
+        CircleImageView markerImage = marker.findViewById(R.id.user_dp);
+        Glide.with(markerImage.getContext())
+                .load(URL)
+                .into(markerImage);
+        TextView txt_name = marker.findViewById(R.id.name);
+        txt_name.setText(_name);
+
+        DisplayMetrics displayMetrics = new DisplayMetrics();
+        ((Activity) context).getWindowManager().getDefaultDisplay().getMetrics(displayMetrics);
+        marker.setLayoutParams(new ViewGroup.LayoutParams(52, ViewGroup.LayoutParams.WRAP_CONTENT));
+        marker.measure(displayMetrics.widthPixels, displayMetrics.heightPixels);
+        marker.layout(0, 0, displayMetrics.widthPixels, displayMetrics.heightPixels);
+        marker.buildDrawingCache();
+        Bitmap bitmap = Bitmap.createBitmap(marker.getMeasuredWidth(), marker.getMeasuredHeight(), Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+        marker.draw(canvas);
+
+        return bitmap;
     }
-*/
+
 }
