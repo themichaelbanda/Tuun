@@ -55,8 +55,6 @@ import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.location.LocationSettingsRequest;
-import com.google.android.gms.location.LocationSettingsResponse;
-import com.google.android.gms.location.LocationSettingsStatusCodes;
 import com.google.android.gms.location.SettingsClient;
 import com.google.android.gms.location.places.GeoDataClient;
 import com.google.android.gms.location.places.PlaceDetectionClient;
@@ -66,7 +64,6 @@ import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.UiSettings;
-import com.google.android.gms.maps.model.BitmapDescriptor;
 import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.CameraPosition;
 import com.google.android.gms.maps.model.LatLng;
@@ -74,7 +71,6 @@ import com.google.android.gms.maps.model.LatLngBounds;
 import com.google.android.gms.maps.model.MapStyleOptions;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
-import com.google.android.gms.tasks.OnFailureListener;
 import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
@@ -192,7 +188,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private StorageReference mPhotosStorageReference;
     private ValueEventListener userRefListener;
     private ChildEventListener markerListener;
-    private HashMap<String, Marker> hashMapMarker = new HashMap<>();
+    private HashMap<String, TuunUsers> hashMapMarker = new HashMap<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -621,12 +617,15 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             mMap.setMyLocationEnabled(true);
         }
 
+        //Cluster Manager init
         mClusterManager = new ClusterManager<>(this, mMap);
         mMap.setOnCameraIdleListener(mClusterManager);
         mMap.setOnMarkerClickListener(mClusterManager);
         mMap.setOnInfoWindowClickListener(mClusterManager);
+        //ToDo new stuffs
+        cRend = new CustomClusterRenderer(this,mMap,mClusterManager);
+        mClusterManager.setRenderer(cRend);
 
-        //cRend = new CustomClusterRenderer(this,mMap,mClusterManager);
         attachMarkerListener();
     }
 
@@ -802,29 +801,46 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         double lat = Double.parseDouble(value.get("latitude").toString());
         double lng = Double.parseDouble(value.get("longitude").toString());
         LatLng location = new LatLng(lat, lng);
-        MarkerOptions markerOptions = new MarkerOptions().title(dataSnapshot.child("name").getValue().toString()).position(location).icon(BitmapDescriptorFactory.fromBitmap(
-                createCustomMarker(this,R.drawable.no_icon,dataSnapshot.child("name").getValue().toString())));
         if ((!hashMapMarker.containsKey(key)) && (!key.equals(mAuth.getCurrentUser().getUid())) && ((dataSnapshot.child("online").getValue().equals("True")))) {
-            hashMapMarker.put(key, mMap.addMarker(markerOptions));
-            //Log.d(TAG, "Location from Firebase is : "+ location.longitude + "and " + location.latitude);
-            setCustomIcon(this,dataSnapshot.child("photoUrl").getValue().toString(),dataSnapshot.child("name").getValue().toString(),hashMapMarker.get(key));
-            //TuunUsers i = new TuunUsers(((Double) location.latitude),((Double) location.longitude) , dataSnapshot.child("name").getValue().toString(), hashMapMarker.get(key).toString());
-           // mClusterManager.addItem(i);
-           // mClusterManager.cluster();
-            //cRend.onBeforeClusterItemRendered(i,markerOptions);
-            //Log.d(TAG, "Loop has added user " + key + " added to hashmap. User key is : " + mAuth.getCurrentUser().getUid() + " Boolean is set to:" + dataSnapshot.child("online").getValue().equals("True"));
+            //hashMapMarker.put(key, mMap.addMarker(new MarkerOptions().title(dataSnapshot.child("name").getValue().toString()).position(location).icon(BitmapDescriptorFactory.fromBitmap(
+            //createCustomMarker(this,R.drawable.no_icon,dataSnapshot.child("name").getValue().toString())))));
+            //possible code replacement
+            TuunUsers userToLoad = new TuunUsers(((Double)location.latitude),((Double)location.longitude),dataSnapshot.child("name").getValue().toString(),dataSnapshot.getKey().toString());
+            hashMapMarker.put(key, userToLoad);
+            mClusterManager.addItem(userToLoad);
+            mClusterManager.cluster();
+            setCustomIcon(this,dataSnapshot.child("photoUrl").getValue().toString(),dataSnapshot.child("name").getValue().toString(),cRend.getMarker(userToLoad));
+
+            Log.d(TAG, "Location from Firebase is : "+ location.longitude + " and " + location.latitude);
+            //setCustomIcon(this,dataSnapshot.child("photoUrl").getValue().toString(),dataSnapshot.child("name").getValue().toString(),hashMapMarker.get(key));
+            Log.d(TAG, "Loop has added user " + key + " added to hashmap. User key is : " + mAuth.getCurrentUser().getUid() + " Boolean is set to:" + dataSnapshot.child("online").getValue().equals("True"));
             //Log.d(TAG, "Validation 1:" + hashMapMarker.containsKey(key) + (key.equals(mAuth.getCurrentUser().getUid())) + ((dataSnapshot.child("online").getValue().equals("True"))));
         }
         if ((hashMapMarker.containsKey(key)) && (dataSnapshot.child("online").getValue().equals("False"))) {
-            Marker marker = hashMapMarker.get(key);
-            marker.remove();
+            Marker marker = cRend.getMarker(hashMapMarker.get(key));
+            //Marker marker = hashMapMarker.get(key);
+            //marker.remove();
+            mClusterManager.removeItem(hashMapMarker.get(key));
+            mClusterManager.cluster();
             hashMapMarker.remove(key);
+
         } else if (!key.equals(mAuth.getCurrentUser().getUid()) && (dataSnapshot.child("online").getValue().equals("True"))) {
-            hashMapMarker.get(key).setPosition(location);
+            TuunUsers userToLoad = new TuunUsers(((Double)location.latitude),((Double)location.longitude),dataSnapshot.child("name").getValue().toString(),dataSnapshot.getKey().toString());
+            Marker marker = cRend.getMarker(hashMapMarker.get(key));
+            mClusterManager.removeItem(hashMapMarker.get(key));
+            hashMapMarker.remove(key);
+            mClusterManager.addItem(userToLoad);
+            hashMapMarker.put(key,userToLoad);
+            mClusterManager.cluster();
+
+            //marker.setPosition(location);
+            //hashMapMarker.get(key).setPosition(location);
         }
         LatLngBounds.Builder builder = new LatLngBounds.Builder();
-        for (Marker marker : hashMapMarker.values()) {
-            builder.include(marker.getPosition());
+        //for (Marker marker : hashMapMarker.values()) {
+        for (TuunUsers tuunUsers : hashMapMarker.values()){
+            builder.include(tuunUsers.getPosition());
+            //builder.include(marker.getPosition());
         }
         /*if(!hashMapMarker.isEmpty()){
         mMap.animateCamera(CameraUpdateFactory.newLatLngBounds(builder.build(), 300));}
@@ -924,17 +940,17 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 .into(new SimpleTarget<Bitmap>() {
                     @Override
                     public void onResourceReady(Bitmap bitmap, Transition<? super Bitmap> transition) {
+                        Log.d(TAG," Might be Null if no further log message");
                         if (mUserMarker != null) {
                             mUserMarker.setIcon(BitmapDescriptorFactory.fromBitmap(createCustomMarker(mContext,mURL,m_name, bitmap)));
-
-                            //prototype
-                           // MarkerOptions markerOptions = new MarkerOptions();
+                            Log.d(TAG,"Custom Marker Set!!!! ");
 
                         }
                     }
                 });
 
     }
+
 
 
 }
