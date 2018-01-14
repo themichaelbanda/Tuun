@@ -42,6 +42,8 @@ import android.widget.Toast;
 
 import com.bumptech.glide.Glide;
 import com.bumptech.glide.request.RequestOptions;
+import com.bumptech.glide.request.target.SimpleTarget;
+import com.bumptech.glide.request.transition.Transition;
 import com.google.android.gms.auth.api.Auth;
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
 import com.google.android.gms.common.ConnectionResult;
@@ -85,6 +87,7 @@ import com.google.firebase.database.ValueEventListener;
 import com.google.firebase.storage.FirebaseStorage;
 import com.google.firebase.storage.StorageReference;
 import com.google.firebase.storage.UploadTask;
+import com.google.maps.android.clustering.ClusterManager;
 
 import java.util.HashMap;
 
@@ -94,15 +97,6 @@ import static com.google.android.gms.location.LocationServices.getFusedLocationP
 
 
 public class MainActivity extends AppCompatActivity implements OnMapReadyCallback, GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener, LocationListener {
-
-    private static final String TAG = MainActivity.class.getSimpleName();
-
-    private FirebaseAuth mAuth;
-    private FirebaseAuth.AuthStateListener mAuthStateListener;
-    private FirebaseUser mUser;
-    private GoogleApiClient mGoogleApiClient;
-    private static final int RC_SIGN_IN = 1;
-    private static final int RC_PHOTO_PICKER = 2;
 
     /**
      * Code used in requesting runtime permissions.
@@ -160,6 +154,24 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
      */
     private Location mCurrentLocation;
 
+    /**
+     * Manager for clustering of Map markers
+     */
+    private ClusterManager<TuunUsers> mClusterManager;
+
+    //ToDo new stuffs
+    private CustomClusterRenderer cRend;
+
+    /*
+    * Primitive level variables
+     */
+    private static final String TAG = MainActivity.class.getSimpleName();
+    private FirebaseAuth mAuth;
+    private FirebaseAuth.AuthStateListener mAuthStateListener;
+    private FirebaseUser mUser;
+    private GoogleApiClient mGoogleApiClient;
+    private static final int RC_SIGN_IN = 1;
+    private static final int RC_PHOTO_PICKER = 2;
     private ListView mDrawerList;
     private TextView mTitle;
     private ArrayAdapter<String> mAdapter;
@@ -251,6 +263,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         setUpMap();
         startLocationUpdates();
         setUserActive();
+
     }
 
     @Override
@@ -585,6 +598,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     @Override
     public void onMapReady(GoogleMap map) {
         mMap = map;
+
+
         mMap.setMapType(GoogleMap.MAP_TYPE_NORMAL);
 
         //Initialize Google Play Services
@@ -605,6 +620,13 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             buildGoogleApiClient();
             mMap.setMyLocationEnabled(true);
         }
+
+        mClusterManager = new ClusterManager<>(this, mMap);
+        mMap.setOnCameraIdleListener(mClusterManager);
+        mMap.setOnMarkerClickListener(mClusterManager);
+        mMap.setOnInfoWindowClickListener(mClusterManager);
+
+        //cRend = new CustomClusterRenderer(this,mMap,mClusterManager);
         attachMarkerListener();
     }
 
@@ -780,12 +802,18 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         double lat = Double.parseDouble(value.get("latitude").toString());
         double lng = Double.parseDouble(value.get("longitude").toString());
         LatLng location = new LatLng(lat, lng);
+        MarkerOptions markerOptions = new MarkerOptions().title(dataSnapshot.child("name").getValue().toString()).position(location).icon(BitmapDescriptorFactory.fromBitmap(
+                createCustomMarker(this,R.drawable.no_icon,dataSnapshot.child("name").getValue().toString())));
         if ((!hashMapMarker.containsKey(key)) && (!key.equals(mAuth.getCurrentUser().getUid())) && ((dataSnapshot.child("online").getValue().equals("True")))) {
-            Bitmap customIcon = createCustomMarker(this,dataSnapshot.child("photoUrl").getValue().toString(),dataSnapshot.child("name").getValue().toString());
-            hashMapMarker.put(key, mMap.addMarker(new MarkerOptions().title(dataSnapshot.child("name").getValue().toString()).position(location).icon((BitmapDescriptorFactory.fromBitmap(
-                    customIcon)))));
-            Log.d(TAG, "Loop has added user " + key + " added to hashmap. User key is : " + mAuth.getCurrentUser().getUid() + " Boolean is set to:" + dataSnapshot.child("online").getValue().equals("True"));
-            Log.d(TAG, "Validation 1:" + hashMapMarker.containsKey(key) + (key.equals(mAuth.getCurrentUser().getUid())) + ((dataSnapshot.child("online").getValue().equals("True"))));
+            hashMapMarker.put(key, mMap.addMarker(markerOptions));
+            //Log.d(TAG, "Location from Firebase is : "+ location.longitude + "and " + location.latitude);
+            setCustomIcon(this,dataSnapshot.child("photoUrl").getValue().toString(),dataSnapshot.child("name").getValue().toString(),hashMapMarker.get(key));
+            //TuunUsers i = new TuunUsers(((Double) location.latitude),((Double) location.longitude) , dataSnapshot.child("name").getValue().toString(), hashMapMarker.get(key).toString());
+           // mClusterManager.addItem(i);
+           // mClusterManager.cluster();
+            //cRend.onBeforeClusterItemRendered(i,markerOptions);
+            //Log.d(TAG, "Loop has added user " + key + " added to hashmap. User key is : " + mAuth.getCurrentUser().getUid() + " Boolean is set to:" + dataSnapshot.child("online").getValue().equals("True"));
+            //Log.d(TAG, "Validation 1:" + hashMapMarker.containsKey(key) + (key.equals(mAuth.getCurrentUser().getUid())) + ((dataSnapshot.child("online").getValue().equals("True"))));
         }
         if ((hashMapMarker.containsKey(key)) && (dataSnapshot.child("online").getValue().equals("False"))) {
             Marker marker = hashMapMarker.get(key);
@@ -837,14 +865,13 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
 
-    public static Bitmap createCustomMarker(Context context, String URL, String _name) {
+    public static Bitmap createCustomMarker(Context context, String URL, String _name, Bitmap urlBitmap) {
 
         View marker = ((LayoutInflater) context.getSystemService(Context.LAYOUT_INFLATER_SERVICE)).inflate(R.layout.custom_marker_layout, null);
 
         CircleImageView markerImage = marker.findViewById(R.id.user_dp);
-        Glide.with(markerImage.getContext())
-                .load(URL)
-                .into(markerImage);
+        markerImage.setImageBitmap(urlBitmap);
+
         TextView txt_name = marker.findViewById(R.id.name);
         txt_name.setText(_name);
 
@@ -860,5 +887,54 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         return bitmap;
     }
+
+    public static Bitmap createCustomMarker(Context context, @DrawableRes int resource, String _name) {
+
+        View marker = ((LayoutInflater) context.getSystemService(Context.LAYOUT_INFLATER_SERVICE)).inflate(R.layout.custom_marker_layout, null);
+
+        CircleImageView markerImage = (CircleImageView) marker.findViewById(R.id.user_dp);
+        markerImage.setImageResource(resource);
+        TextView txt_name = (TextView)marker.findViewById(R.id.name);
+        txt_name.setText(_name);
+
+        DisplayMetrics displayMetrics = new DisplayMetrics();
+        ((Activity) context).getWindowManager().getDefaultDisplay().getMetrics(displayMetrics);
+        marker.setLayoutParams(new ViewGroup.LayoutParams(52, ViewGroup.LayoutParams.WRAP_CONTENT));
+        marker.measure(displayMetrics.widthPixels, displayMetrics.heightPixels);
+        marker.layout(0, 0, displayMetrics.widthPixels, displayMetrics.heightPixels);
+        marker.buildDrawingCache();
+        Bitmap bitmap = Bitmap.createBitmap(marker.getMeasuredWidth(), marker.getMeasuredHeight(), Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+        marker.draw(canvas);
+
+        return bitmap;
+    }
+
+
+    // Update existing marker with icon from URL
+    public void setCustomIcon(Context context, String URL, String _name, Marker userMarker) {
+        final Context mContext = context;
+        final String mURL = URL;
+        final String m_name = _name;
+        final Marker mUserMarker = userMarker;
+
+        Glide.with(mContext.getApplicationContext())
+                .asBitmap()
+                .load(mURL)
+                .into(new SimpleTarget<Bitmap>() {
+                    @Override
+                    public void onResourceReady(Bitmap bitmap, Transition<? super Bitmap> transition) {
+                        if (mUserMarker != null) {
+                            mUserMarker.setIcon(BitmapDescriptorFactory.fromBitmap(createCustomMarker(mContext,mURL,m_name, bitmap)));
+
+                            //prototype
+                           // MarkerOptions markerOptions = new MarkerOptions();
+
+                        }
+                    }
+                });
+
+    }
+
 
 }
