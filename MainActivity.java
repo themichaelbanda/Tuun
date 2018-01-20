@@ -83,6 +83,8 @@ import com.google.firebase.database.ValueEventListener;
 import com.google.firebase.storage.FirebaseStorage;
 import com.google.firebase.storage.StorageReference;
 import com.google.firebase.storage.UploadTask;
+import com.google.maps.android.MarkerManager;
+import com.google.maps.android.clustering.ClusterManager;
 
 import java.util.HashMap;
 
@@ -179,7 +181,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private StorageReference mPhotosStorageReference;
     private ValueEventListener userRefListener;
     private ChildEventListener markerListener;
-    private HashMap<String, Marker> hashMapMarker = new HashMap<>();
+    private HashMap<String, TuunUsers> hashMapMarker = new HashMap<>();
+    private ClusterManager<TuunUsers> mClusterManager;
+    CustomClusterRenderer cRend;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -524,11 +528,13 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 @Override
                 public void onChildAdded(DataSnapshot dataSnapshot, String s) {
                     setMarker(dataSnapshot);
+                    mClusterManager.cluster();
                 }
 
                 @Override
                 public void onChildChanged(DataSnapshot dataSnapshot, String s) {
                     setMarker(dataSnapshot);
+                    mClusterManager.cluster();
                 }
 
                 @Override
@@ -586,6 +592,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     public void onMapReady(GoogleMap map) {
         mMap = map;
 
+        mClusterManager = new ClusterManager<>(this, mMap);
+        cRend = new CustomClusterRenderer(this, mMap, mClusterManager);
+        mClusterManager.setRenderer(cRend);
 
         mMap.setMapType(GoogleMap.MAP_TYPE_NORMAL);
 
@@ -607,6 +616,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             buildGoogleApiClient();
             mMap.setMyLocationEnabled(true);
         }
+
+        mMap.setOnInfoWindowClickListener(mClusterManager);
+        mMap.setOnCameraIdleListener(mClusterManager);
+        mMap.setOnMarkerClickListener(mClusterManager);
 
         attachMarkerListener();
     }
@@ -783,25 +796,41 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         double lat = Double.parseDouble(value.get("latitude").toString());
         double lng = Double.parseDouble(value.get("longitude").toString());
         LatLng location = new LatLng(lat, lng);
-        MarkerOptions markerOptions = new MarkerOptions().title(dataSnapshot.child("name").getValue().toString()).position(location).icon(BitmapDescriptorFactory.fromBitmap(
-                createCustomMarker(this,R.drawable.no_icon,dataSnapshot.child("name").getValue().toString())));
+        //TuunUsers userToLoad = new TuunUsers(location,dataSnapshot.child("name").getValue().toString(),dataSnapshot.getKey().toString());
         if ((!hashMapMarker.containsKey(key)) && (!key.equals(mAuth.getCurrentUser().getUid())) && ((dataSnapshot.child("online").getValue().equals("True")))) {
-            hashMapMarker.put(key, mMap.addMarker(markerOptions));
-            //Log.d(TAG, "Location from Firebase is : "+ location.longitude + "and " + location.latitude);
-            setCustomIcon(this,dataSnapshot.child("photoUrl").getValue().toString(),dataSnapshot.child("name").getValue().toString(),hashMapMarker.get(key));
-            //Log.d(TAG, "Loop has added user " + key + " added to hashmap. User key is : " + mAuth.getCurrentUser().getUid() + " Boolean is set to:" + dataSnapshot.child("online").getValue().equals("True"));
-            //Log.d(TAG, "Validation 1:" + hashMapMarker.containsKey(key) + (key.equals(mAuth.getCurrentUser().getUid())) + ((dataSnapshot.child("online").getValue().equals("True"))));
+            TuunUsers userToLoad = new TuunUsers(location,dataSnapshot.child("name").getValue().toString(),dataSnapshot.getKey().toString(),dataSnapshot.child("photoUrl").getValue().toString());
+            hashMapMarker.put(key, userToLoad);
+            mClusterManager.addItem(userToLoad);
+            //mClusterManager.cluster();
+            //setCustomIcon(this,dataSnapshot.child("photoUrl").getValue().toString(),dataSnapshot.child("name").getValue().toString(),cRend.getMarker(userToLoad));
+
+            Log.d(TAG, "Location from Firebase is : "+ location.longitude + " and " + location.latitude);
+            //setCustomIcon(this,dataSnapshot.child("photoUrl").getValue().toString(),dataSnapshot.child("name").getValue().toString(),cRend.getMarker(userToLoad));
+            Log.d(TAG, "Loop has added user " + key + " added to hashmap. User key is : " + mAuth.getCurrentUser().getUid() + " Boolean is set to:" + dataSnapshot.child("online").getValue().equals("True"));
+            Log.d(TAG, "Validation 1:" + hashMapMarker.containsKey(key) + (key.equals(mAuth.getCurrentUser().getUid())) + ((dataSnapshot.child("online").getValue().equals("True"))));
         }
         if ((hashMapMarker.containsKey(key)) && (dataSnapshot.child("online").getValue().equals("False"))) {
-            Marker marker = hashMapMarker.get(key);
-            marker.remove();
+            //Marker marker = cRend.getMarker(hashMapMarker.get(key));
+            mClusterManager.removeItem(hashMapMarker.get(key));
+            //mClusterManager.cluster();
             hashMapMarker.remove(key);
+
         } else if (!key.equals(mAuth.getCurrentUser().getUid()) && (dataSnapshot.child("online").getValue().equals("True"))) {
-            hashMapMarker.get(key).setPosition(location);
+            TuunUsers userToLoad = new TuunUsers(location,dataSnapshot.child("name").getValue().toString(),dataSnapshot.getKey().toString(),dataSnapshot.child("photoUrl").getValue().toString());
+            Marker marker = cRend.getMarker(hashMapMarker.get(key));
+            //marker.remove();
+            mClusterManager.removeItem(hashMapMarker.get(key));
+            hashMapMarker.remove(key);
+            mClusterManager.addItem(userToLoad);
+            hashMapMarker.put(key,userToLoad);
+            //mClusterManager.cluster();
         }
         LatLngBounds.Builder builder = new LatLngBounds.Builder();
-        for (Marker marker : hashMapMarker.values()) {
-            builder.include(marker.getPosition());
+        //for (Marker marker : hashMapMarker.values()) {
+        for (TuunUsers tuunUsers : hashMapMarker.values()){
+
+            builder.include(tuunUsers.getPosition());
+            //builder.include(marker.getPosition());
         }
         /*if(!hashMapMarker.isEmpty()){
         mMap.animateCamera(CameraUpdateFactory.newLatLngBounds(builder.build(), 300));}
@@ -889,11 +918,11 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
 
     // Update existing marker with icon from URL
-    public void setCustomIcon(Context context, String URL, String _name, Marker userMarker) {
+    public static void setCustomIcon(Context context, String URL, String _name, final MarkerOptions markerOptions) {
         final Context mContext = context;
         final String mURL = URL;
         final String m_name = _name;
-        final Marker mUserMarker = userMarker;
+        final MarkerOptions mUserMarker = markerOptions;
 
         Glide.with(mContext.getApplicationContext())
                 .asBitmap()
@@ -903,7 +932,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     public void onResourceReady(Bitmap bitmap, Transition<? super Bitmap> transition) {
                         Log.d(TAG," Might be Null if no further log message");
                         if (mUserMarker != null) {
-                            mUserMarker.setIcon(BitmapDescriptorFactory.fromBitmap(createCustomMarker(mContext,mURL,m_name, bitmap)));
+                            mUserMarker.icon(BitmapDescriptorFactory.fromBitmap(createCustomMarker(mContext,mURL,m_name, bitmap)));
                             Log.d(TAG,"Custom Marker Set!!!! ");
 
                         }
@@ -911,6 +940,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 });
 
     }
+
 
 
 
