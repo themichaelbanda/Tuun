@@ -83,7 +83,6 @@ import com.google.firebase.database.ValueEventListener;
 import com.google.firebase.storage.FirebaseStorage;
 import com.google.firebase.storage.StorageReference;
 import com.google.firebase.storage.UploadTask;
-import com.google.maps.android.MarkerManager;
 import com.google.maps.android.clustering.ClusterManager;
 
 import java.util.HashMap;
@@ -205,6 +204,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         // Database reference instantiation
         myRef = database.getReference("users");
         userRef = myRef.child(mAuth.getCurrentUser().getUid());
+
+        // Database filtering
+        //myRef.limitToFirst(1000);
+
 
         // Storage reference instantiation for Image URL
         mPhotosStorageReference = mFirebaseStorage.getReference().child("user_photos");
@@ -608,6 +611,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 mMap.setMapStyle(new MapStyleOptions(getResources().getString(R.string.style_json)));
                 mMap.setMaxZoomPreference(15.0f);
                 mMap.setMinZoomPreference(10.0f);
+                mMap.getUiSettings().setRotateGesturesEnabled(false);
                 UiSettings settings = mMap.getUiSettings();
                 settings.setZoomControlsEnabled(true);
                 centerMap();
@@ -801,36 +805,26 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             TuunUsers userToLoad = new TuunUsers(location,dataSnapshot.child("name").getValue().toString(),dataSnapshot.getKey().toString(),dataSnapshot.child("photoUrl").getValue().toString());
             hashMapMarker.put(key, userToLoad);
             mClusterManager.addItem(userToLoad);
-            //mClusterManager.cluster();
-            //setCustomIcon(this,dataSnapshot.child("photoUrl").getValue().toString(),dataSnapshot.child("name").getValue().toString(),cRend.getMarker(userToLoad));
 
             Log.d(TAG, "Location from Firebase is : "+ location.longitude + " and " + location.latitude);
-            //setCustomIcon(this,dataSnapshot.child("photoUrl").getValue().toString(),dataSnapshot.child("name").getValue().toString(),cRend.getMarker(userToLoad));
             Log.d(TAG, "Loop has added user " + key + " added to hashmap. User key is : " + mAuth.getCurrentUser().getUid() + " Boolean is set to:" + dataSnapshot.child("online").getValue().equals("True"));
             Log.d(TAG, "Validation 1:" + hashMapMarker.containsKey(key) + (key.equals(mAuth.getCurrentUser().getUid())) + ((dataSnapshot.child("online").getValue().equals("True"))));
         }
         if ((hashMapMarker.containsKey(key)) && (dataSnapshot.child("online").getValue().equals("False"))) {
-            //Marker marker = cRend.getMarker(hashMapMarker.get(key));
             mClusterManager.removeItem(hashMapMarker.get(key));
-            //mClusterManager.cluster();
             hashMapMarker.remove(key);
 
         } else if (!key.equals(mAuth.getCurrentUser().getUid()) && (dataSnapshot.child("online").getValue().equals("True"))) {
             TuunUsers userToLoad = new TuunUsers(location,dataSnapshot.child("name").getValue().toString(),dataSnapshot.getKey().toString(),dataSnapshot.child("photoUrl").getValue().toString());
-            Marker marker = cRend.getMarker(hashMapMarker.get(key));
-            //marker.remove();
             mClusterManager.removeItem(hashMapMarker.get(key));
             hashMapMarker.remove(key);
             mClusterManager.addItem(userToLoad);
             hashMapMarker.put(key,userToLoad);
-            //mClusterManager.cluster();
         }
         LatLngBounds.Builder builder = new LatLngBounds.Builder();
-        //for (Marker marker : hashMapMarker.values()) {
-        for (TuunUsers tuunUsers : hashMapMarker.values()){
 
+        for (TuunUsers tuunUsers : hashMapMarker.values()){
             builder.include(tuunUsers.getPosition());
-            //builder.include(marker.getPosition());
         }
         /*if(!hashMapMarker.isEmpty()){
         mMap.animateCamera(CameraUpdateFactory.newLatLngBounds(builder.build(), 300));}
@@ -862,7 +856,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
             CameraPosition cameraPosition = new CameraPosition.Builder()
                     .target(new LatLng(location.getLatitude(), location.getLongitude()))      // Sets the center of the map to location user
-                    .zoom(14)                   // Sets the zoom
+                    .zoom(13)                   // Sets the zoom
                     .bearing(0)                // Sets the orientation of the camera to east
                     .tilt(0)                   // Sets the tilt of the camera to 30 degrees
                     .build();                   // Creates a CameraPosition from the builder
