@@ -44,6 +44,11 @@ import com.bumptech.glide.Glide;
 import com.bumptech.glide.request.RequestOptions;
 import com.bumptech.glide.request.target.SimpleTarget;
 import com.bumptech.glide.request.transition.Transition;
+import com.firebase.geofire.GeoFire;
+import com.firebase.geofire.GeoLocation;
+import com.firebase.geofire.GeoQuery;
+import com.firebase.geofire.GeoQueryDataEventListener;
+import com.firebase.geofire.GeoQueryEventListener;
 import com.google.android.gms.auth.api.Auth;
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
 import com.google.android.gms.common.ConnectionResult;
@@ -79,6 +84,7 @@ import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.database.Query;
 import com.google.firebase.database.ValueEventListener;
 import com.google.firebase.storage.FirebaseStorage;
 import com.google.firebase.storage.StorageReference;
@@ -94,65 +100,18 @@ import static com.google.android.gms.location.LocationServices.getFusedLocationP
 
 public class MainActivity extends AppCompatActivity implements OnMapReadyCallback, GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener, LocationListener {
 
-    /**
-     * Code used in requesting runtime permissions.
-     */
+
     private static final int REQUEST_PERMISSIONS_REQUEST_CODE = 34;
-
-    /**
-     * Constant used in the location settings dialog.
-     */
     private static final int REQUEST_CHECK_SETTINGS = 0x1;
-
-    /**
-     * The desired interval for location updates. Inexact. Updates may be more or less frequent.
-     */
     private static final long UPDATE_INTERVAL_IN_MILLISECONDS = 10000;
-
-    /**
-     * The fastest rate for active location updates. Exact. Updates will never be more frequent
-     * than this value.
-     */
     private static final long FASTEST_UPDATE_INTERVAL_IN_MILLISECONDS =
             UPDATE_INTERVAL_IN_MILLISECONDS / 2;
-
-    // Keys for storing activity state in the Bundle.
     private final static String KEY_LOCATION = "location";
-
-    /**
-     * Provides access to the Fused Location Provider API.
-     */
-    private FusedLocationProviderClient mFusedLocationClient;
-
-    /**
-     * Provides access to the Location Settings API.
-     */
     private SettingsClient mSettingsClient;
-
-    /**
-     * Stores parameters for requests to the FusedLocationProviderApi.
-     */
     private LocationRequest mLocationRequest;
-
-    /**
-     * Stores the types of location services the client is interested in using. Used for checking
-     * settings to determine if the device has optimal location settings.
-     */
     private LocationSettingsRequest mLocationSettingsRequest;
-
-    /**
-     * Callback for Location events.
-     */
     private LocationCallback mLocationCallback;
-
-    /**
-     * Represents a geographical location.
-     */
     private Location mCurrentLocation;
-
-    /*
-    * Primitive level variables
-     */
     private static final String TAG = MainActivity.class.getSimpleName();
     private FirebaseAuth mAuth;
     private FirebaseAuth.AuthStateListener mAuthStateListener;
@@ -175,43 +134,32 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     public User uUser;
     private ImageView profilePicture;
     protected FirebaseDatabase database;
-    protected DatabaseReference myRef, userRef;
+    protected DatabaseReference myRef, userRef, ref;
+    private GeoFire geoFire;
+
     private FirebaseStorage mFirebaseStorage;
     private StorageReference mPhotosStorageReference;
     private ValueEventListener userRefListener;
     private ChildEventListener markerListener;
-    private HashMap<String, TuunUsers> hashMapMarker = new HashMap<>();
-    private ClusterManager<TuunUsers> mClusterManager;
-    CustomClusterRenderer cRend;
+    private HashMap<String, Marker> hashMapMarker = new HashMap<>();
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         createNavBarLayout();
-
-        // Initialize Firebase Tools
-        mAuth = FirebaseAuth.getInstance();
-        database = FirebaseDatabase.getInstance();
-        mFirebaseStorage = FirebaseStorage.getInstance();
+        setUpFirebase();
 
         // User Object initialization, this object is maintained to update firebase database easily
         mUser = mAuth.getCurrentUser();
-
         // Enable data persistence on connection issues
         //database.setPersistenceEnabled(true);
-
         // Database reference instantiation
-        myRef = database.getReference("users");
-        userRef = myRef.child(mAuth.getCurrentUser().getUid());
-
-        // Database filtering
-        //myRef.limitToFirst(1000);
 
 
         // Storage reference instantiation for Image URL
         mPhotosStorageReference = mFirebaseStorage.getReference().child("user_photos");
-
         profilePicture = findViewById(R.id.profilePictureImg);
         mTitle = this.findViewById(R.id.hNameTextView);
 
@@ -256,6 +204,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         // Kick off map features
         setUpMap();
         startLocationUpdates();
+        //TODO Geofire query to fetch users
+        fetchUsers();
         setUserActive();
 
     }
@@ -312,7 +262,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     //create navigation bar layout
     private void createNavBarLayout() {
-
         mDrawerList = (ListView) findViewById(R.id.navList);
         mDrawerLayout = (DrawerLayout) findViewById(R.id.drawer_layout);
         mActivityTitle = getTitle().toString();
@@ -416,6 +365,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         detachDatabaseReadListener();
         detachAuthStateListener();
         detachMarkerListener();
+        for (Marker marker : hashMapMarker.values()) {
+            hashMapMarker.remove(marker);
+        }
+
     }
 
     @Override
@@ -453,6 +406,20 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     /*    Firebase Functions
     /*
     /******************************/
+
+    private void setUpFirebase(){
+
+        // Initialize Firebase Tools
+        mAuth = FirebaseAuth.getInstance();
+        database = FirebaseDatabase.getInstance();
+        mFirebaseStorage = FirebaseStorage.getInstance();
+        myRef = database.getReference("users");
+        userRef = myRef.child(mAuth.getCurrentUser().getUid());
+
+        // TODO Geofire initialization
+        GeoFire geoFire = new GeoFire(database.getReference("online-users"));
+
+    }
 
     private void attachDatabaseReadListener() {
         if (userRefListener == null) {
@@ -531,13 +498,11 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 @Override
                 public void onChildAdded(DataSnapshot dataSnapshot, String s) {
                     setMarker(dataSnapshot);
-                    mClusterManager.cluster();
                 }
 
                 @Override
                 public void onChildChanged(DataSnapshot dataSnapshot, String s) {
                     setMarker(dataSnapshot);
-                    mClusterManager.cluster();
                 }
 
                 @Override
@@ -595,10 +560,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     public void onMapReady(GoogleMap map) {
         mMap = map;
 
-        mClusterManager = new ClusterManager<>(this, mMap);
-        cRend = new CustomClusterRenderer(this, mMap, mClusterManager);
-        mClusterManager.setRenderer(cRend);
-
         mMap.setMapType(GoogleMap.MAP_TYPE_NORMAL);
 
         //Initialize Google Play Services
@@ -620,11 +581,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             buildGoogleApiClient();
             mMap.setMyLocationEnabled(true);
         }
-
-        mMap.setOnInfoWindowClickListener(mClusterManager);
-        mMap.setOnCameraIdleListener(mClusterManager);
-        mMap.setOnMarkerClickListener(mClusterManager);
-
         attachMarkerListener();
     }
 
@@ -713,8 +669,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     // Permission denied, Disable the functionality that depends on this permission.
                     Toast.makeText(this, "Location permission denied", Toast.LENGTH_LONG).show();
                     signOut();
-                    //mFusedLocationProviderClient.removeLocationUpdates(mLocationCallback);
-                    //finish();
                 }
                 return;
             }
@@ -762,6 +716,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     @Override
                     public void onLocationResult(LocationResult locationResult) {
                         onLocationChanged(locationResult.getLastLocation());
+                        mCurrentLocation = locationResult.getLastLocation();
                     }
                 },
                 Looper.myLooper());
@@ -793,38 +748,39 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private void setMarker(DataSnapshot dataSnapshot) {
         // When a location update is received, put or update
         // its value in mMarkers, which contains all the markers
-        // for locations received, so that we can build the
-        // boundaries required to show them all on the map at once
+        // for locations received
         String key = dataSnapshot.getKey();
         HashMap<String, Object> value = (HashMap<String, Object>) dataSnapshot.getValue();
         double lat = Double.parseDouble(value.get("latitude").toString());
         double lng = Double.parseDouble(value.get("longitude").toString());
         LatLng location = new LatLng(lat, lng);
-        //TuunUsers userToLoad = new TuunUsers(location,dataSnapshot.child("name").getValue().toString(),dataSnapshot.getKey().toString());
-        if ((!hashMapMarker.containsKey(key)) && (!key.equals(mAuth.getCurrentUser().getUid())) && ((dataSnapshot.child("online").getValue().equals("True")))) {
-            TuunUsers userToLoad = new TuunUsers(location,dataSnapshot.child("name").getValue().toString(),dataSnapshot.getKey().toString(),dataSnapshot.child("photoUrl").getValue().toString());
-            hashMapMarker.put(key, userToLoad);
-            mClusterManager.addItem(userToLoad);
+        MarkerOptions markerOptions = new MarkerOptions().title(dataSnapshot.child("name").getValue().toString()).position(location).icon(BitmapDescriptorFactory.fromBitmap(
+                createCustomMarker(this,R.drawable.no_icon,dataSnapshot.child("name").getValue().toString())));
 
-            Log.d(TAG, "Location from Firebase is : "+ location.longitude + " and " + location.latitude);
+        // If condition to check that User data loaded is not your own/this is your first time being loaded to map/User is online :: Add marker to map
+        if ((!hashMapMarker.containsKey(key)) && (!key.equals(mAuth.getCurrentUser().getUid())) && ((dataSnapshot.child("online").getValue().equals("True")))) {
+            hashMapMarker.put(key, mMap.addMarker(markerOptions));
+            setCustomIcon(this,dataSnapshot.child("photoUrl").getValue().toString(),dataSnapshot.child("name").getValue().toString(),hashMapMarker.get(key));
+
+            //Logging
+            Log.d(TAG, "Location from Firebase is : "+ location.longitude + "and " + location.latitude);
             Log.d(TAG, "Loop has added user " + key + " added to hashmap. User key is : " + mAuth.getCurrentUser().getUid() + " Boolean is set to:" + dataSnapshot.child("online").getValue().equals("True"));
             Log.d(TAG, "Validation 1:" + hashMapMarker.containsKey(key) + (key.equals(mAuth.getCurrentUser().getUid())) + ((dataSnapshot.child("online").getValue().equals("True"))));
         }
+
+        // If condition to check that user is already loaded/ User is offline :: Remove marker for offline users
         if ((hashMapMarker.containsKey(key)) && (dataSnapshot.child("online").getValue().equals("False"))) {
-            mClusterManager.removeItem(hashMapMarker.get(key));
+            Marker marker = hashMapMarker.get(key);
+            marker.remove();
             hashMapMarker.remove(key);
 
+        // If condition to check if User is not your own/ User is online :: Update location
         } else if (!key.equals(mAuth.getCurrentUser().getUid()) && (dataSnapshot.child("online").getValue().equals("True"))) {
-            TuunUsers userToLoad = new TuunUsers(location,dataSnapshot.child("name").getValue().toString(),dataSnapshot.getKey().toString(),dataSnapshot.child("photoUrl").getValue().toString());
-            mClusterManager.removeItem(hashMapMarker.get(key));
-            hashMapMarker.remove(key);
-            mClusterManager.addItem(userToLoad);
-            hashMapMarker.put(key,userToLoad);
+            hashMapMarker.get(key).setPosition(location);
         }
         LatLngBounds.Builder builder = new LatLngBounds.Builder();
-
-        for (TuunUsers tuunUsers : hashMapMarker.values()){
-            builder.include(tuunUsers.getPosition());
+        for (Marker marker : hashMapMarker.values()) {
+            builder.include(marker.getPosition());
         }
         /*if(!hashMapMarker.isEmpty()){
         mMap.animateCamera(CameraUpdateFactory.newLatLngBounds(builder.build(), 300));}
@@ -912,11 +868,11 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
 
     // Update existing marker with icon from URL
-    public static void setCustomIcon(Context context, String URL, String _name, final MarkerOptions markerOptions) {
+    public void setCustomIcon(Context context, String URL, String _name, Marker userMarker) {
         final Context mContext = context;
         final String mURL = URL;
         final String m_name = _name;
-        final MarkerOptions mUserMarker = markerOptions;
+        final Marker mUserMarker = userMarker;
 
         Glide.with(mContext.getApplicationContext())
                 .asBitmap()
@@ -926,7 +882,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     public void onResourceReady(Bitmap bitmap, Transition<? super Bitmap> transition) {
                         Log.d(TAG," Might be Null if no further log message");
                         if (mUserMarker != null) {
-                            mUserMarker.icon(BitmapDescriptorFactory.fromBitmap(createCustomMarker(mContext,mURL,m_name, bitmap)));
+                            mUserMarker.setIcon(BitmapDescriptorFactory.fromBitmap(createCustomMarker(mContext,mURL,m_name, bitmap)));
                             Log.d(TAG,"Custom Marker Set!!!! ");
 
                         }
@@ -935,7 +891,42 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     }
 
+    private void fetchUsers(){
+        GeoQuery geoQuery = geoFire.queryAtLocation(new GeoLocation(mCurrentLocation.getLatitude(), mCurrentLocation.getLongitude()), 25);
+        geoQuery.addGeoQueryDataEventListener(new GeoQueryDataEventListener() {
 
+            @Override
+            public void onDataEntered(DataSnapshot dataSnapshot, GeoLocation location) {
+                // setMarkers(dataSnapshot);
+            }
+
+            @Override
+            public void onDataExited(DataSnapshot dataSnapshot) {
+                // ...
+            }
+
+            @Override
+            public void onDataMoved(DataSnapshot dataSnapshot, GeoLocation location) {
+                // ...
+            }
+
+            @Override
+            public void onDataChanged(DataSnapshot dataSnapshot, GeoLocation location) {
+                // ...
+            }
+
+            @Override
+            public void onGeoQueryReady() {
+                // ...
+            }
+
+            @Override
+            public void onGeoQueryError(DatabaseError error) {
+                // ...
+            }
+
+        });
+    }
 
 
 }
