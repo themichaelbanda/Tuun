@@ -47,7 +47,6 @@ import com.bumptech.glide.request.transition.Transition;
 import com.firebase.geofire.GeoFire;
 import com.firebase.geofire.GeoLocation;
 import com.firebase.geofire.GeoQuery;
-import com.firebase.geofire.GeoQueryDataEventListener;
 import com.firebase.geofire.GeoQueryEventListener;
 import com.google.android.gms.auth.api.Auth;
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
@@ -84,12 +83,10 @@ import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
-import com.google.firebase.database.Query;
 import com.google.firebase.database.ValueEventListener;
 import com.google.firebase.storage.FirebaseStorage;
 import com.google.firebase.storage.StorageReference;
 import com.google.firebase.storage.UploadTask;
-import com.google.maps.android.clustering.ClusterManager;
 
 import java.util.HashMap;
 
@@ -100,9 +97,6 @@ import static com.google.android.gms.location.LocationServices.getFusedLocationP
 
 public class MainActivity extends AppCompatActivity implements OnMapReadyCallback, GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener, LocationListener {
 
-
-    private static final int REQUEST_PERMISSIONS_REQUEST_CODE = 34;
-    private static final int REQUEST_CHECK_SETTINGS = 0x1;
     private static final long UPDATE_INTERVAL_IN_MILLISECONDS = 10000;
     private static final long FASTEST_UPDATE_INTERVAL_IN_MILLISECONDS =
             UPDATE_INTERVAL_IN_MILLISECONDS / 2;
@@ -111,7 +105,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private LocationRequest mLocationRequest;
     private LocationSettingsRequest mLocationSettingsRequest;
     private LocationCallback mLocationCallback;
-    private Location mCurrentLocation;
+    private Location mLastLocation;
     private static final String TAG = MainActivity.class.getSimpleName();
     private FirebaseAuth mAuth;
     private FirebaseAuth.AuthStateListener mAuthStateListener;
@@ -134,14 +128,19 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     public User uUser;
     private ImageView profilePicture;
     protected FirebaseDatabase database;
-    protected DatabaseReference myRef, userRef, ref;
+    protected DatabaseReference myRef, userRef, ref, geoRef;
     private GeoFire geoFire;
+    private GeoQuery geoQuery;
 
     private FirebaseStorage mFirebaseStorage;
     private StorageReference mPhotosStorageReference;
     private ValueEventListener userRefListener;
     private ChildEventListener markerListener;
+    private GeoQueryEventListener queryListener;
     private HashMap<String, Marker> hashMapMarker = new HashMap<>();
+
+    private static final int PERMISSIONS_REQUEST_ACCESS_FINE_LOCATION = 1;
+    private boolean mLocationPermissionGranted;
 
 
     @Override
@@ -149,21 +148,33 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         createNavBarLayout();
-        setUpFirebase();
+
+        // Initialize Firebase Tools
+        mAuth = FirebaseAuth.getInstance();
+        database = FirebaseDatabase.getInstance();
+        mFirebaseStorage = FirebaseStorage.getInstance();
+        myRef = database.getReference("users");
+        userRef = myRef.child(mAuth.getCurrentUser().getUid());
+        geoRef = database.getReference("online-users");
 
         // User Object initialization, this object is maintained to update firebase database easily
         mUser = mAuth.getCurrentUser();
-        // Enable data persistence on connection issues
-        //database.setPersistenceEnabled(true);
-        // Database reference instantiation
+        // Database filtering
+        //myRef.limitToFirst(1000);
+
+        if(savedInstanceState != null){
+            mLastLocation = savedInstanceState.getParcelable(KEY_LOCATION);
+            uUser = new User(mUser.getEmail(), mUser.getDisplayName(), mLastLocation, default_img);
+            Log.d(TAG,"SAVEDINSTANCE STATE EXISTS!!!");
+        }
+        uUser = new User(mUser.getEmail(), mUser.getDisplayName(), null, default_img);
 
 
         // Storage reference instantiation for Image URL
         mPhotosStorageReference = mFirebaseStorage.getReference().child("user_photos");
+
         profilePicture = findViewById(R.id.profilePictureImg);
         mTitle = this.findViewById(R.id.hNameTextView);
-
-        uUser = new User(mUser.getEmail(), mUser.getDisplayName(), null, default_img);
 
         // Check if user is in DB and create user object if not create in db and object
         attachDatabaseReadListener();
@@ -178,6 +189,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         mFusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this);
 
         mSettingsClient = LocationServices.getSettingsClient(this);
+
+        // Build the map
+        setUpMap();
 
         // Configure sign-in to request the user's ID, email address, and basic
         // profile. ID and basic profile are included in DEFAULT_SIGN_IN.
@@ -198,14 +212,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 .addApi(Auth.GOOGLE_SIGN_IN_API, gso)
                 .build();
 
-        // Update values using data stored in the Bundle.
-        updateValuesFromBundle(savedInstanceState);
-
-        // Kick off map features
-        setUpMap();
-        startLocationUpdates();
-        //TODO Geofire query to fetch users
-        fetchUsers();
+        //attachMarkerListener();
         setUserActive();
 
     }
@@ -232,25 +239,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     }
 
-    /**
-     * Updates fields based on data stored in the bundle.
-     *
-     * @param savedInstanceState The activity state saved in the Bundle.
-     */
-    private void updateValuesFromBundle(Bundle savedInstanceState) {
-        if (savedInstanceState != null) {
-
-            // Update the value of mCurrentLocation from the Bundle and update the UI to show the
-            // correct latitude and longitude.
-            if (savedInstanceState.keySet().contains(KEY_LOCATION)) {
-                // Since KEY_LOCATION was found in the Bundle, we can be sure that mCurrentLocation
-                // is not null.
-                mCurrentLocation = savedInstanceState.getParcelable(KEY_LOCATION);
-            }
-
-        }
-    }
-
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (keyCode == KeyEvent.KEYCODE_BACK) {
@@ -271,6 +259,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         getSupportActionBar().setHomeButtonEnabled(true);
     }
 
+    //Set up drawer
     private void setupDrawer() {
         mDrawerToggle = new ActionBarDrawerToggle(this, mDrawerLayout, R.string.drawer_open, R.string.drawer_close) {
 
@@ -293,6 +282,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         mDrawerLayout.setDrawerListener(mDrawerToggle);
     }
 
+    //Fill drawer with labels/selections
     private void addDrawerItems() {
         View header = getLayoutInflater().inflate(R.layout.navigation_header, null);
         String[] osArray = {"Garage", "Club", "Shops", "Leaderboards", "E85", "Customer Support", "Sign Out"};
@@ -327,8 +317,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     public void onSaveInstanceState(Bundle savedInstanceState) {
-        savedInstanceState.putParcelable(KEY_LOCATION, mCurrentLocation);
-        super.onSaveInstanceState(savedInstanceState);
+        if (mMap != null) {
+            savedInstanceState.putParcelable(KEY_LOCATION, mLastLocation);
+            super.onSaveInstanceState(savedInstanceState);
+        }
     }
 
     @Override
@@ -365,6 +357,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         detachDatabaseReadListener();
         detachAuthStateListener();
         detachMarkerListener();
+        //geoFire.removeLocation(mAuth.getCurrentUser().getUid());
         for (Marker marker : hashMapMarker.values()) {
             hashMapMarker.remove(marker);
         }
@@ -374,9 +367,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     @Override
     protected void onStart() {
         super.onStart();
-        attachDatabaseReadListener();
         attachAuthStateListener();
-        attachMarkerListener();
+        setUpFirebase();
+
     }
 
     private void sendCustSuppEmail() {
@@ -407,6 +400,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     /*
     /******************************/
 
+    //prototype method to configure all firebase initialization tasks
     private void setUpFirebase(){
 
         // Initialize Firebase Tools
@@ -414,10 +408,17 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         database = FirebaseDatabase.getInstance();
         mFirebaseStorage = FirebaseStorage.getInstance();
         myRef = database.getReference("users");
+        geoRef = database.getReference("online-users");
         userRef = myRef.child(mAuth.getCurrentUser().getUid());
 
+        // Check if user is in DB and create user object if not create in db and object
+        attachDatabaseReadListener();
+        //attachMarkerListener();
+
         // TODO Geofire initialization
-        GeoFire geoFire = new GeoFire(database.getReference("online-users"));
+        geoFire = new GeoFire(geoRef);
+
+
 
     }
 
@@ -442,7 +443,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                         }
                         Log.d(TAG, "Else/Value is: " + uUser.getPhotoUrl().toString() + uUser.getName().toString());
                     }
-
 
                 }
 
@@ -523,6 +523,36 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
     }
 
+    private void newMarkerListener(final String key){
+
+        myRef.addChildEventListener(new ChildEventListener() {
+            @Override
+            public void onChildAdded(DataSnapshot dataSnapshot, String prevChildKey) {
+                if(dataSnapshot.getKey() == key){setMarker(dataSnapshot);}
+            }
+
+            @Override
+            public void onChildChanged(DataSnapshot dataSnapshot, String s) {
+                //if(dataSnapshot.getKey() == key){setMarker(dataSnapshot);}
+            }
+
+            @Override
+            public void onChildRemoved(DataSnapshot dataSnapshot) {
+
+            }
+
+            @Override
+            public void onChildMoved(DataSnapshot dataSnapshot, String s) {
+
+            }
+
+            @Override
+            public void onCancelled(DatabaseError databaseError) {
+
+            }
+        });
+    }
+
     private void detachMarkerListener() {
         if (markerListener != null) {
             myRef.removeEventListener(markerListener);
@@ -535,6 +565,15 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         userRef.child("online").onDisconnect().setValue("False");
     }
 
+    private void setGeoQuery(Location location){
+        if(geoQuery == null){
+            geoQuery = geoFire.queryAtLocation(new GeoLocation(location.getLatitude(),location.getLongitude()),25);
+        }
+        else{
+            geoQuery.setCenter(new GeoLocation(location.getLatitude(),location.getLongitude()));
+        }
+    }
+
 
     /******************************/
     /*
@@ -545,21 +584,15 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     //Setup map
     private void setUpMap() {
 
-        if (android.os.Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            Log.d(TAG,"Running Marshmallow or Higher Loop Entered True");
-            checkLocationPermission();
-        }
-        SupportMapFragment mapFragment =
-                (SupportMapFragment) getSupportFragmentManager().findFragmentById(R.id.map);
-        mapFragment.getMapAsync(this);
+           SupportMapFragment mapFragment =
+                   (SupportMapFragment) getSupportFragmentManager().findFragmentById(R.id.map);
+           mapFragment.getMapAsync(this);
 
-
-    }
+       }
 
     @Override
     public void onMapReady(GoogleMap map) {
         mMap = map;
-
         mMap.setMapType(GoogleMap.MAP_TYPE_NORMAL);
 
         //Initialize Google Play Services
@@ -581,39 +614,24 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             buildGoogleApiClient();
             mMap.setMyLocationEnabled(true);
         }
-        attachMarkerListener();
+        getLocationPermission();
     }
 
-    public boolean checkLocationPermission() {
-        if (ContextCompat.checkSelfPermission(this,
+    private void getLocationPermission() {
+        /*
+         * Request location permission, so that we can get the location of the
+         * device. The result of the permission request is handled by a callback,
+         * onRequestPermissionsResult.
+         */
+        if (ContextCompat.checkSelfPermission(this.getApplicationContext(),
                 android.Manifest.permission.ACCESS_FINE_LOCATION)
-                != PackageManager.PERMISSION_GRANTED) {
-                Log.d(TAG,"First loop for location permission came up false");
-            // Asking user if explanation is needed
-            if (ActivityCompat.shouldShowRequestPermissionRationale(this,
-                    android.Manifest.permission.ACCESS_FINE_LOCATION)) {
-                Log.d(TAG,"Second loop for location permission for FINE location");
-                // Show an explanation to the user *asynchronously* -- don't block
-                // this thread waiting for the user's response! After the user
-                // sees the explanation, try again to request the permission.
-                new AlertDialog.Builder(this)
-                        .setTitle("Location Permission")
-                        .setMessage("Location is needed for this application to run properly.")
-                        .setPositiveButton("Ok", new DialogInterface.OnClickListener() {
-                            @Override
-                            public void onClick(DialogInterface dialogInterface, int i) {
-                                //Prompt the user once explanation has been shown
-                                requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
-                                        MY_PERMISSIONS_REQUEST_LOCATION);
-                            }
-                        })
-                        .create()
-                        .show();
-
-            }
-            return false;
+                == PackageManager.PERMISSION_GRANTED) {
+            startLocationUpdates();
+            mLocationPermissionGranted = true;
         } else {
-            return true;
+            ActivityCompat.requestPermissions(this,
+                    new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION},
+                    PERMISSIONS_REQUEST_ACCESS_FINE_LOCATION);
         }
     }
 
@@ -639,17 +657,16 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     public void onConnectionFailed(@NonNull ConnectionResult connectionResult) {
     }
 
-    public static final int MY_PERMISSIONS_REQUEST_LOCATION = 99;
-
     @Override
     public void onRequestPermissionsResult(int requestCode, String permissions[], int[] grantResults) {
 
+        mLocationPermissionGranted = false;
         switch (requestCode) {
-            case MY_PERMISSIONS_REQUEST_LOCATION: {
+            case PERMISSIONS_REQUEST_ACCESS_FINE_LOCATION: {
                 // If request is cancelled, the result arrays are empty.
                 if (grantResults.length > 0
                         && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-
+                    mLocationPermissionGranted = true;
                     // permission was granted. Do the
                     // contacts-related task you need to do.
                     if (ContextCompat.checkSelfPermission(this,
@@ -659,8 +676,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                         if (mGoogleApiClient == null) {
                             buildGoogleApiClient();
                         }
-                        setUpMap();
-                        startLocationUpdates();
                         mMap.setMyLocationEnabled(true);
                     }
 
@@ -673,13 +688,11 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 return;
             }
 
-            // other 'case' lines to check for other permissions this app might request.
-            // You can add here other case statements according to your requirement.
         }
     }
 
 
-    // Trigger new location updates at interval/newest version TODO fix location update and marker behaviour
+    // Trigger new location updates at interval/newest version
     protected void startLocationUpdates() {
 
         // Create the location request to start receiving updates
@@ -716,7 +729,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     @Override
                     public void onLocationResult(LocationResult locationResult) {
                         onLocationChanged(locationResult.getLastLocation());
-                        mCurrentLocation = locationResult.getLastLocation();
                     }
                 },
                 Looper.myLooper());
@@ -727,11 +739,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         // GPS may be turned off
         if (location == null) {
+            Log.d(TAG,"OnLocationChanged : Location is Null");
             return;
         }
 
         // New location has now been determined
-        mCurrentLocation = location;
+        mLastLocation = location;
         String msg = "Updated Location: " +
                 Double.toString(location.getLatitude()) + "," +
                 Double.toString(location.getLongitude());
@@ -739,10 +752,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         // You can now create a LatLng Object for use with maps
         //LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
 
-        uUser.setLocation(mCurrentLocation);
+        uUser.setLocation(mLastLocation);
         userRef.child("latitude").setValue(location.getLatitude());
         userRef.child("longitude").setValue(location.getLongitude());
-
+        geoFire.setLocation(mAuth.getCurrentUser().getUid(),new GeoLocation(mLastLocation.getLatitude(), mLastLocation.getLongitude()));
+        setGeoQuery(location);
+        fetchUsers();
     }
 
     private void setMarker(DataSnapshot dataSnapshot) {
@@ -750,15 +765,17 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         // its value in mMarkers, which contains all the markers
         // for locations received
         String key = dataSnapshot.getKey();
-        HashMap<String, Object> value = (HashMap<String, Object>) dataSnapshot.getValue();
-        double lat = Double.parseDouble(value.get("latitude").toString());
-        double lng = Double.parseDouble(value.get("longitude").toString());
+        //HashMap<String, Object> value = (HashMap<String, Object>) dataSnapshot.getValue();
+        //double lat = Double.parseDouble(value.get("latitude").toString());
+        //double lng = Double.parseDouble(value.get("longitude").toString());
+        double lat = Double.parseDouble(dataSnapshot.child("latitude").getValue().toString());
+        double lng = Double.parseDouble(dataSnapshot.child("longitude").getValue().toString());
         LatLng location = new LatLng(lat, lng);
         MarkerOptions markerOptions = new MarkerOptions().title(dataSnapshot.child("name").getValue().toString()).position(location).icon(BitmapDescriptorFactory.fromBitmap(
                 createCustomMarker(this,R.drawable.no_icon,dataSnapshot.child("name").getValue().toString())));
 
         // If condition to check that User data loaded is not your own/this is your first time being loaded to map/User is online :: Add marker to map
-        if ((!hashMapMarker.containsKey(key)) && (!key.equals(mAuth.getCurrentUser().getUid())) && ((dataSnapshot.child("online").getValue().equals("True")))) {
+        if ((!hashMapMarker.containsKey(key)) && (key.equals(mAuth.getCurrentUser().getUid())) && ((dataSnapshot.child("online").getValue().equals("True")))) {
             hashMapMarker.put(key, mMap.addMarker(markerOptions));
             setCustomIcon(this,dataSnapshot.child("photoUrl").getValue().toString(),dataSnapshot.child("name").getValue().toString(),hashMapMarker.get(key));
 
@@ -775,8 +792,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             hashMapMarker.remove(key);
 
         // If condition to check if User is not your own/ User is online :: Update location
-        } else if (!key.equals(mAuth.getCurrentUser().getUid()) && (dataSnapshot.child("online").getValue().equals("True"))) {
-            hashMapMarker.get(key).setPosition(location);
+        /*} else if (key.equals(mAuth.getCurrentUser().getUid()) && (dataSnapshot.child("online").getValue().equals("True"))) {
+            hashMapMarker.get(key).setPosition(location); */
         }
         LatLngBounds.Builder builder = new LatLngBounds.Builder();
         for (Marker marker : hashMapMarker.values()) {
@@ -891,42 +908,45 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     }
 
-    private void fetchUsers(){
-        GeoQuery geoQuery = geoFire.queryAtLocation(new GeoLocation(mCurrentLocation.getLatitude(), mCurrentLocation.getLongitude()), 25);
-        geoQuery.addGeoQueryDataEventListener(new GeoQueryDataEventListener() {
+    private void fetchUsers() {
+        if (queryListener == null){
+            queryListener = new GeoQueryEventListener() {
 
-            @Override
-            public void onDataEntered(DataSnapshot dataSnapshot, GeoLocation location) {
-                // setMarkers(dataSnapshot);
-            }
+                @Override
+                public void onKeyEntered(String key, GeoLocation location) {
+                    newMarkerListener(key);
+                }
 
-            @Override
-            public void onDataExited(DataSnapshot dataSnapshot) {
-                // ...
-            }
+                @Override
+                public void onKeyExited(String key) {
+                    if(hashMapMarker.get(key)!= null){
+                    Marker marker = hashMapMarker.get(key);
+                    marker.remove();
+                    hashMapMarker.remove(key);
+                    }
+                }
 
-            @Override
-            public void onDataMoved(DataSnapshot dataSnapshot, GeoLocation location) {
-                // ...
-            }
+                @Override
+                public void onKeyMoved(String key, GeoLocation location) {
+                    if(hashMapMarker.get(key)!= null) {
+                        LatLng latLng = new LatLng(location.latitude, location.longitude);
+                        hashMapMarker.get(key).setPosition(latLng);
+                    }
+                }
 
-            @Override
-            public void onDataChanged(DataSnapshot dataSnapshot, GeoLocation location) {
-                // ...
-            }
+                @Override
+                public void onGeoQueryReady() {
+                    // ...
+                }
 
-            @Override
-            public void onGeoQueryReady() {
-                // ...
-            }
+                @Override
+                public void onGeoQueryError(DatabaseError error) {
+                    // ...
+                }
 
-            @Override
-            public void onGeoQueryError(DatabaseError error) {
-                // ...
-            }
-
-        });
+            };
+            geoQuery.addGeoQueryEventListener(queryListener);
     }
-
+    }
 
 }
