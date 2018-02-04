@@ -3,7 +3,6 @@ package com.penguinsonabeach.tuun;
 import android.Manifest;
 import android.app.Activity;
 import android.content.Context;
-import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
@@ -22,7 +21,6 @@ import android.support.v13.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v4.widget.DrawerLayout;
 import android.support.v7.app.ActionBarDrawerToggle;
-import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.DisplayMetrics;
@@ -78,11 +76,11 @@ import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
-import com.google.firebase.database.ChildEventListener;
 import com.google.firebase.database.DataSnapshot;
 import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.database.Query;
 import com.google.firebase.database.ValueEventListener;
 import com.google.firebase.storage.FirebaseStorage;
 import com.google.firebase.storage.StorageReference;
@@ -128,14 +126,13 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     public User uUser;
     private ImageView profilePicture;
     protected FirebaseDatabase database;
-    protected DatabaseReference myRef, userRef, ref, geoRef;
+    protected DatabaseReference myRef, userRef, geoRef;
     private GeoFire geoFire;
     private GeoQuery geoQuery;
 
     private FirebaseStorage mFirebaseStorage;
     private StorageReference mPhotosStorageReference;
     private ValueEventListener userRefListener;
-    private ChildEventListener markerListener;
     private GeoQueryEventListener queryListener;
     private HashMap<String, Marker> hashMapMarker = new HashMap<>();
 
@@ -151,24 +148,22 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         // Initialize Firebase Tools
         mAuth = FirebaseAuth.getInstance();
+        mUser = mAuth.getCurrentUser();
         database = FirebaseDatabase.getInstance();
         mFirebaseStorage = FirebaseStorage.getInstance();
         myRef = database.getReference("users");
         userRef = myRef.child(mAuth.getCurrentUser().getUid());
         geoRef = database.getReference("online-users");
+        geoFire = new GeoFire(geoRef);
 
-        // User Object initialization, this object is maintained to update firebase database easily
-        mUser = mAuth.getCurrentUser();
+        //Check if first time user
+        createUser();
+
         // Database filtering
         //myRef.limitToFirst(1000);
 
-        if(savedInstanceState != null){
-            mLastLocation = savedInstanceState.getParcelable(KEY_LOCATION);
-            uUser = new User(mUser.getEmail(), mUser.getDisplayName(), mLastLocation, default_img);
-            Log.d(TAG,"SAVEDINSTANCE STATE EXISTS!!!");
-        }
-        uUser = new User(mUser.getEmail(), mUser.getDisplayName(), null, default_img);
-
+        //User Object Initialization
+        userInit(savedInstanceState,mUser);
 
         // Storage reference instantiation for Image URL
         mPhotosStorageReference = mFirebaseStorage.getReference().child("user_photos");
@@ -212,7 +207,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 .addApi(Auth.GOOGLE_SIGN_IN_API, gso)
                 .build();
 
-        //attachMarkerListener();
         setUserActive();
 
     }
@@ -355,9 +349,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     protected void onStop() {
         super.onStop();
         detachDatabaseReadListener();
+        if(!mUser.getUid().equals(null)){
+            geoFire.removeLocation(mUser.getUid());}
         detachAuthStateListener();
-        detachMarkerListener();
-        //geoFire.removeLocation(mAuth.getCurrentUser().getUid());
         for (Marker marker : hashMapMarker.values()) {
             hashMapMarker.remove(marker);
         }
@@ -368,7 +362,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     protected void onStart() {
         super.onStart();
         attachAuthStateListener();
-        setUpFirebase();
 
     }
 
@@ -385,9 +378,17 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     // Method to handle appropriate actions when user signs out
     private void signOut() {
         userRef.child("online").setValue("False");
+        geoFire.removeLocation(mUser.getUid());
         if(!getFusedLocationProviderClient(this).equals(null)){
         getFusedLocationProviderClient(this).removeLocationUpdates(mLocationCallback);}
-        detachMarkerListener();
+        mAuth.getInstance().signOut();
+        Intent sOut = new Intent(MainActivity.this, LoginActivity.class);
+        startActivity(sOut);
+    }
+
+    private void forceOut(){
+        userRef.child("online").setValue("False");
+        geoFire.removeLocation(mUser.getUid());
         mAuth.getInstance().signOut();
         Intent sOut = new Intent(MainActivity.this, LoginActivity.class);
         startActivity(sOut);
@@ -399,27 +400,23 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     /*    Firebase Functions
     /*
     /******************************/
+    private void createUser(){
+        userRef.addListenerForSingleValueEvent(new ValueEventListener() {
+                @Override
+            public void onDataChange(DataSnapshot dataSnapshot) {
+                if(dataSnapshot.child("name").exists()){
+                    //User exists
+                } else {
+                    //User does not exist
+                    myRef.child(mUser.getUid()).setValue(new User(mUser.getEmail(),mUser.getDisplayName(),null, default_img));
+                }
+            }
 
-    //prototype method to configure all firebase initialization tasks
-    private void setUpFirebase(){
+            @Override
+            public void onCancelled(DatabaseError databaseError) {
 
-        // Initialize Firebase Tools
-        mAuth = FirebaseAuth.getInstance();
-        database = FirebaseDatabase.getInstance();
-        mFirebaseStorage = FirebaseStorage.getInstance();
-        myRef = database.getReference("users");
-        geoRef = database.getReference("online-users");
-        userRef = myRef.child(mAuth.getCurrentUser().getUid());
-
-        // Check if user is in DB and create user object if not create in db and object
-        attachDatabaseReadListener();
-        //attachMarkerListener();
-
-        // TODO Geofire initialization
-        geoFire = new GeoFire(geoRef);
-
-
-
+            }
+        });
     }
 
     private void attachDatabaseReadListener() {
@@ -427,9 +424,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             userRefListener = new ValueEventListener() {
                 @Override
                 public void onDataChange(DataSnapshot dataSnapshot) {
-                    if (dataSnapshot.getValue(User.class) == null) {
-                        userRef.setValue(uUser);
-                    } else {
+
                         uUser = dataSnapshot.getValue(User.class);
                         mTitle.setText(uUser.getName());
 
@@ -441,8 +436,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                         } else {
                             profilePicture.setImageResource(R.drawable.no_icon);
                         }
-                        Log.d(TAG, "Else/Value is: " + uUser.getPhotoUrl().toString() + uUser.getName().toString());
-                    }
+                        //Log.d(TAG, "Else/Value is: " + uUser.getPhotoUrl().toString() + uUser.getName().toString());
+
 
                 }
 
@@ -488,75 +483,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         if (mAuthStateListener != null) {
             mAuth.removeAuthStateListener(mAuthStateListener);
             mAuthStateListener = null;
-        }
-    }
-
-    private void attachMarkerListener() {
-
-        if (markerListener == null) {
-            markerListener = new ChildEventListener() {
-                @Override
-                public void onChildAdded(DataSnapshot dataSnapshot, String s) {
-                    setMarker(dataSnapshot);
-                }
-
-                @Override
-                public void onChildChanged(DataSnapshot dataSnapshot, String s) {
-                    setMarker(dataSnapshot);
-                }
-
-                @Override
-                public void onChildRemoved(DataSnapshot dataSnapshot) {
-                }
-
-                @Override
-                public void onChildMoved(DataSnapshot dataSnapshot, String s) {
-
-                }
-
-                @Override
-                public void onCancelled(DatabaseError databaseError) {
-                    Log.d(TAG, "Failed to read value.", databaseError.toException());
-                }
-            };
-            myRef.addChildEventListener(markerListener);
-        }
-    }
-
-    private void newMarkerListener(final String key){
-
-        myRef.addChildEventListener(new ChildEventListener() {
-            @Override
-            public void onChildAdded(DataSnapshot dataSnapshot, String prevChildKey) {
-                if(dataSnapshot.getKey() == key){setMarker(dataSnapshot);}
-            }
-
-            @Override
-            public void onChildChanged(DataSnapshot dataSnapshot, String s) {
-                //if(dataSnapshot.getKey() == key){setMarker(dataSnapshot);}
-            }
-
-            @Override
-            public void onChildRemoved(DataSnapshot dataSnapshot) {
-
-            }
-
-            @Override
-            public void onChildMoved(DataSnapshot dataSnapshot, String s) {
-
-            }
-
-            @Override
-            public void onCancelled(DatabaseError databaseError) {
-
-            }
-        });
-    }
-
-    private void detachMarkerListener() {
-        if (markerListener != null) {
-            myRef.removeEventListener(markerListener);
-            markerListener = null;
         }
     }
 
@@ -628,7 +554,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 == PackageManager.PERMISSION_GRANTED) {
             startLocationUpdates();
             mLocationPermissionGranted = true;
+            Log.d(TAG, "Issue 1: Tag 1: permission granted");
         } else {
+            Log.d(TAG, "Issue 1: Tag 2: permission not granted Request Started");
             ActivityCompat.requestPermissions(this,
                     new String[]{android.Manifest.permission.ACCESS_FINE_LOCATION},
                     PERMISSIONS_REQUEST_ACCESS_FINE_LOCATION);
@@ -661,21 +589,23 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     public void onRequestPermissionsResult(int requestCode, String permissions[], int[] grantResults) {
 
         mLocationPermissionGranted = false;
+
         switch (requestCode) {
             case PERMISSIONS_REQUEST_ACCESS_FINE_LOCATION: {
                 // If request is cancelled, the result arrays are empty.
-                if (grantResults.length > 0
-                        && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                     mLocationPermissionGranted = true;
+                    Log.d(TAG, "Issue 1: Tag 3: permission granted");
                     // permission was granted. Do the
                     // contacts-related task you need to do.
                     if (ContextCompat.checkSelfPermission(this,
                             android.Manifest.permission.ACCESS_FINE_LOCATION)
                             == PackageManager.PERMISSION_GRANTED) {
-
+                        Log.d(TAG, "Issue 1: Tag 4: permission granted");
                         if (mGoogleApiClient == null) {
                             buildGoogleApiClient();
                         }
+                        setUpMap();
                         mMap.setMyLocationEnabled(true);
                     }
 
@@ -683,7 +613,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
                     // Permission denied, Disable the functionality that depends on this permission.
                     Toast.makeText(this, "Location permission denied", Toast.LENGTH_LONG).show();
-                    signOut();
+                    Log.d(TAG, "Issue 1: Tag 5: permission not granted");
+                    forceOut();
                 }
                 return;
             }
@@ -760,50 +691,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         fetchUsers();
     }
 
-    private void setMarker(DataSnapshot dataSnapshot) {
-        // When a location update is received, put or update
-        // its value in mMarkers, which contains all the markers
-        // for locations received
-        String key = dataSnapshot.getKey();
-        //HashMap<String, Object> value = (HashMap<String, Object>) dataSnapshot.getValue();
-        //double lat = Double.parseDouble(value.get("latitude").toString());
-        //double lng = Double.parseDouble(value.get("longitude").toString());
-        double lat = Double.parseDouble(dataSnapshot.child("latitude").getValue().toString());
-        double lng = Double.parseDouble(dataSnapshot.child("longitude").getValue().toString());
-        LatLng location = new LatLng(lat, lng);
-        MarkerOptions markerOptions = new MarkerOptions().title(dataSnapshot.child("name").getValue().toString()).position(location).icon(BitmapDescriptorFactory.fromBitmap(
-                createCustomMarker(this,R.drawable.no_icon,dataSnapshot.child("name").getValue().toString())));
-
-        // If condition to check that User data loaded is not your own/this is your first time being loaded to map/User is online :: Add marker to map
-        if ((!hashMapMarker.containsKey(key)) && (key.equals(mAuth.getCurrentUser().getUid())) && ((dataSnapshot.child("online").getValue().equals("True")))) {
-            hashMapMarker.put(key, mMap.addMarker(markerOptions));
-            setCustomIcon(this,dataSnapshot.child("photoUrl").getValue().toString(),dataSnapshot.child("name").getValue().toString(),hashMapMarker.get(key));
-
-            //Logging
-            Log.d(TAG, "Location from Firebase is : "+ location.longitude + "and " + location.latitude);
-            Log.d(TAG, "Loop has added user " + key + " added to hashmap. User key is : " + mAuth.getCurrentUser().getUid() + " Boolean is set to:" + dataSnapshot.child("online").getValue().equals("True"));
-            Log.d(TAG, "Validation 1:" + hashMapMarker.containsKey(key) + (key.equals(mAuth.getCurrentUser().getUid())) + ((dataSnapshot.child("online").getValue().equals("True"))));
-        }
-
-        // If condition to check that user is already loaded/ User is offline :: Remove marker for offline users
-        if ((hashMapMarker.containsKey(key)) && (dataSnapshot.child("online").getValue().equals("False"))) {
-            Marker marker = hashMapMarker.get(key);
-            marker.remove();
-            hashMapMarker.remove(key);
-
-        // If condition to check if User is not your own/ User is online :: Update location
-        /*} else if (key.equals(mAuth.getCurrentUser().getUid()) && (dataSnapshot.child("online").getValue().equals("True"))) {
-            hashMapMarker.get(key).setPosition(location); */
-        }
-        LatLngBounds.Builder builder = new LatLngBounds.Builder();
-        for (Marker marker : hashMapMarker.values()) {
-            builder.include(marker.getPosition());
-        }
-        /*if(!hashMapMarker.isEmpty()){
-        mMap.animateCamera(CameraUpdateFactory.newLatLngBounds(builder.build(), 300));}
-        Option to build viewer that fits all current markers*/
-    }
-
     //method to center camera on current user
     private void centerMap() {
 
@@ -837,6 +724,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
     }
 
+
+    /******************************/
+    /*
+    /*    Marker Related Functions
+    /*
+    /******************************/
 
     public static Bitmap createCustomMarker(Context context, String URL, String _name, Bitmap urlBitmap) {
 
@@ -883,7 +776,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         return bitmap;
     }
 
-
     // Update existing marker with icon from URL
     public void setCustomIcon(Context context, String URL, String _name, Marker userMarker) {
         final Context mContext = context;
@@ -914,15 +806,15 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
                 @Override
                 public void onKeyEntered(String key, GeoLocation location) {
-                    newMarkerListener(key);
+                    getMarkerData(key);
                 }
 
                 @Override
                 public void onKeyExited(String key) {
                     if(hashMapMarker.get(key)!= null){
-                    Marker marker = hashMapMarker.get(key);
-                    marker.remove();
-                    hashMapMarker.remove(key);
+                        Marker marker = hashMapMarker.get(key);
+                        marker.remove();
+                        hashMapMarker.remove(key);
                     }
                 }
 
@@ -946,7 +838,61 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
             };
             geoQuery.addGeoQueryEventListener(queryListener);
+        }
     }
+
+    private void getMarkerData(final String key){
+
+        Query query = myRef.orderByKey().equalTo(key);
+        query.addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(DataSnapshot dataSnapshot) {
+                for (DataSnapshot issue : dataSnapshot.getChildren()){
+                    setMarker(issue);
+                }
+
+            }
+
+            @Override
+            public void onCancelled(DatabaseError databaseError) {
+                //TODO handle if canceled
+            }
+        });
+    }
+
+    private void setMarker(DataSnapshot dataSnapshot) {
+        // When a location update is received, put or update
+        // its value in hashMapMarker, which contains all the markers
+        // for locations received
+        String key = dataSnapshot.getKey();
+        double lat = Double.parseDouble(dataSnapshot.child("latitude").getValue().toString());
+        double lng = Double.parseDouble(dataSnapshot.child("longitude").getValue().toString());
+        LatLng location = new LatLng(lat, lng);
+
+        // If condition to check that User data loaded is not your own/this is your first time being loaded to map/User is online :: Add marker to map
+        if ((!hashMapMarker.containsKey(key)) && (!key.equals(mAuth.getCurrentUser().getUid())) && ((dataSnapshot.child("online").getValue().equals("True")))) {
+            hashMapMarker.put(key, mMap.addMarker(new MarkerOptions().title(dataSnapshot.child("name").getValue().toString()).position(location).icon(BitmapDescriptorFactory.fromBitmap(
+                    createCustomMarker(this,R.drawable.no_icon,dataSnapshot.child("name").getValue().toString())))));
+            setCustomIcon(this,dataSnapshot.child("photoUrl").getValue().toString(),dataSnapshot.child("name").getValue().toString(),hashMapMarker.get(key));
+
+            //Logging
+            Log.d(TAG, "Location from Firebase is : "+ location.longitude + "and " + location.latitude);
+            Log.d(TAG, "Loop has added user " + key + " added to hashmap. User key is : " + mAuth.getCurrentUser().getUid() + " Boolean is set to:" + dataSnapshot.child("online").getValue().equals("True"));
+            Log.d(TAG, "Validation 1:" + hashMapMarker.containsKey(key) + (key.equals(mAuth.getCurrentUser().getUid())) + ((dataSnapshot.child("online").getValue().equals("True"))));
+        }
+
+        LatLngBounds.Builder builder = new LatLngBounds.Builder();
+        for (Marker marker : hashMapMarker.values()) {
+            builder.include(marker.getPosition());
+        }
+    }
+
+    private void userInit(Bundle savedInstanceState, FirebaseUser mUser){
+        //User Object Initialization
+            uUser = new User(mUser.getEmail(), mUser.getDisplayName(), null, default_img);
+            Log.d(TAG, " USER OBJECT CREATED : "+ uUser.toString());
+
+
     }
 
 }
