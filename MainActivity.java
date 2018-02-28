@@ -7,6 +7,7 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.location.Criteria;
 import android.location.Location;
@@ -50,7 +51,6 @@ import com.google.android.gms.auth.api.Auth;
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
-import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationCallback;
 import com.google.android.gms.location.LocationListener;
 import com.google.android.gms.location.LocationRequest;
@@ -58,9 +58,6 @@ import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.location.LocationSettingsRequest;
 import com.google.android.gms.location.SettingsClient;
-import com.google.android.gms.location.places.GeoDataClient;
-import com.google.android.gms.location.places.PlaceDetectionClient;
-import com.google.android.gms.location.places.Places;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
@@ -98,13 +95,18 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private static final long UPDATE_INTERVAL_IN_MILLISECONDS = 10000;
     private static final long FASTEST_UPDATE_INTERVAL_IN_MILLISECONDS =
             UPDATE_INTERVAL_IN_MILLISECONDS / 2;
+    private static final String gUserDetailsRef = "users";
+    private static final String gShopDetailsRef = "shops";
+    private static final String gUserOnlineGeoRef = "online-users";
+    private static final String gUserPhotosStorageRef = "user_photos";
+    private static final String gShopGeoRef = "shop-location";
     private final static String KEY_LOCATION = "location";
     private LocationCallback mLocationCallback;
     private Location mLastLocation;
     private static final String TAG = MainActivity.class.getSimpleName();
     private FirebaseAuth mAuth;
     private FirebaseAuth.AuthStateListener mAuthStateListener;
-    private FirebaseUser mUser;
+    private FirebaseUser gUser;
     private GoogleApiClient mGoogleApiClient;
     private static final int RC_PHOTO_PICKER = 2;
     private ListView mDrawerList;
@@ -118,18 +120,20 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private User uUser;
     private ImageView profilePicture;
     private FirebaseDatabase database;
+    private DatabaseReference usersRef;
     private DatabaseReference myRef;
-    private DatabaseReference userRef;
+    private DatabaseReference shopsRef;
     private DatabaseReference geoRefUser;
     private DatabaseReference geoRefShop;
     private GeoFire geoFireUser, geoFireShop;
     private GeoQuery geoQueryUser, geoQueryShop;
-
     private StorageReference mPhotosStorageReference;
     private ValueEventListener userRefListener;
     private GeoQueryEventListener userQueryListener, shopQueryListener;
     private final HashMap<String, Marker> hashMapUserMarker = new HashMap<>();
     private final HashMap<String, Marker> hashMapShopMarker = new HashMap<>();
+    private final HashMap<String, Bitmap> hashMapBitmap = new HashMap<>();
+    private final HashMap<String, Object> hashMapObjects = new HashMap<>();
 
     private static final int PERMISSIONS_REQUEST_ACCESS_FINE_LOCATION = 1;
 
@@ -140,51 +144,27 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         setContentView(R.layout.activity_main);
         createNavBarLayout();
 
-        // Initialize Firebase Tools
-        mAuth = FirebaseAuth.getInstance();
-        mUser = mAuth.getCurrentUser();
-        database = FirebaseDatabase.getInstance();
-        FirebaseStorage mFirebaseStorage = FirebaseStorage.getInstance();
-        myRef = database.getReference("users");
-        userRef = myRef.child(mAuth.getCurrentUser().getUid());
-        geoRefUser = database.getReference("online-users");
-        geoFireUser = new GeoFire(geoRefUser);
+        //Set view variables
+        profilePicture = findViewById(R.id.profilePictureImg);
+        mTitle = this.findViewById(R.id.hNameTextView);
 
-        //TODO shop references
-        geoRefShop = database.getReference("shop-location");
-        geoFireShop = new GeoFire(geoRefShop);
+        // Initialize Firebase Database and Storage tools
+        setUpFirebase();
 
         //Check if first time user
         createUser();
 
         //Remove on disconnect
-        removeGeoOnDiscon(mUser);
+        removeGeoOnDiscon();
 
         // Database filtering
-        //myRef.limitToFirst(1000);
+        //usersRef.limitToFirst(1000);
 
         //User Object Initialization
-        userInit(savedInstanceState,mUser);
+        userInit(savedInstanceState);
 
-        // Storage reference instantiation for Image URL
-        mPhotosStorageReference = mFirebaseStorage.getReference().child("user_photos");
-
-        profilePicture = findViewById(R.id.profilePictureImg);
-        mTitle = this.findViewById(R.id.hNameTextView);
-
-        // Check if user is in DB and create user object if not create in db and object
-        attachDatabaseReadListener();
-
-        // Construct a GeoDataClient.
-        GeoDataClient mGeoDataClient = Places.getGeoDataClient(this, null);
-
-        // Construct a PlaceDetectionClient.
-        PlaceDetectionClient mPlaceDetectionClient = Places.getPlaceDetectionClient(this, null);
-
-        // Construct a FusedLocationProviderClient.
-        FusedLocationProviderClient mFusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this);
-
-        SettingsClient mSettingsClient = LocationServices.getSettingsClient(this);
+        /* Initialize UI with user data and update if data changes in db */
+        attachUserDatabaseReadListener();
 
         // Build the map
         setUpMap();
@@ -192,25 +172,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         //admin function to add shops to map todo add to a javascript based webpage
         //setShops();
 
-        // Configure sign-in to request the user's ID, email address, and basic
-        // profile. ID and basic profile are included in DEFAULT_SIGN_IN.
-        GoogleSignInOptions gso = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-                .requestIdToken(getString(R.string.default_web_client_id))
-                .requestEmail()
-                .build();
-
-        // Build a GoogleApiClient with access to the Google Sign-In API and the
-        // options specified by gso.
-        mGoogleApiClient = new GoogleApiClient.Builder(this)
-                .enableAutoManage(this, new GoogleApiClient.OnConnectionFailedListener() {
-                    @Override
-                    public void onConnectionFailed(@NonNull ConnectionResult connectionResult) {
-
-                    }
-                } /* OnConnectionFailedListener */)
-                .addApi(Auth.GOOGLE_SIGN_IN_API, gso)
-                .build();
-
+        // Google Auth function to initialize data import for user
+        setGoogleAuthDetails();
         setUserActive();
 
     }
@@ -222,7 +185,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             Uri selectedImageUri = data.getData();
 
             // Get a reference to store file at user_photos/<FILENAME> TODO
-            StorageReference photoRef = mPhotosStorageReference.child(mUser.getUid().concat(".jpg"));
+            StorageReference photoRef = mPhotosStorageReference.child(gUser.getUid().concat(".jpg"));
 
             // Upload file to Firebase Storage
             photoRef.putFile(selectedImageUri).addOnSuccessListener(this, new OnSuccessListener<UploadTask.TaskSnapshot>() {
@@ -230,7 +193,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 public void onSuccess(UploadTask.TaskSnapshot taskSnapshot) {
                     Uri downloadUrl = taskSnapshot.getDownloadUrl();
                     uUser.setPhotoUrl(downloadUrl.toString());
-                    userRef.child("photoUrl").setValue(uUser.getPhotoUrl());
+                    myRef.child("photoUrl").setValue(uUser.getPhotoUrl());
 
                     Glide.with(profilePicture.getContext())
                             .load(uUser.getPhotoUrl())
@@ -379,8 +342,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     // Method to handle appropriate actions when user signs out
     private void signOut() {
-        userRef.child("online").setValue("False");
-        geoFireUser.removeLocation(mUser.getUid());
+        myRef.child("online").setValue("False");
+        geoFireUser.removeLocation(gUser.getUid());
         if(!getFusedLocationProviderClient(this).equals(null)){
         getFusedLocationProviderClient(this).removeLocationUpdates(mLocationCallback);}
         FirebaseAuth.getInstance().signOut();
@@ -388,12 +351,41 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         startActivity(sOut);
     }
 
+    //Method called when permissions are denied in order to force user out of application
     private void forceOut(){
-        userRef.child("online").setValue("False");
-        geoFireUser.removeLocation(mUser.getUid());
+        myRef.child("online").setValue("False");
+        geoFireUser.removeLocation(gUser.getUid());
         FirebaseAuth.getInstance().signOut();
         Intent sOut = new Intent(MainActivity.this, LoginActivity.class);
         startActivity(sOut);
+    }
+
+    /******************************/
+    /*
+    /*    Google Auth Functions
+    /*
+    /******************************/
+
+    private void setGoogleAuthDetails(){
+        // Configure sign-in to request the user's ID, email address, and basic
+        // profile. ID and basic profile are included in DEFAULT_SIGN_IN.
+        GoogleSignInOptions gso = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                .requestIdToken(getString(R.string.default_web_client_id))
+                .requestEmail()
+                .build();
+
+        // Build a GoogleApiClient with access to the Google Sign-In API and the
+        // options specified by gso.
+        mGoogleApiClient = new GoogleApiClient.Builder(this)
+                .enableAutoManage(this, new GoogleApiClient.OnConnectionFailedListener() {
+                    @Override
+                    public void onConnectionFailed(@NonNull ConnectionResult connectionResult) {
+
+                    }
+                } /* OnConnectionFailedListener */)
+                .addApi(Auth.GOOGLE_SIGN_IN_API, gso)
+                .build();
+
     }
 
 
@@ -402,13 +394,37 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     /*    Firebase Functions
     /*
     /******************************/
+
+    private void setUpFirebase(){
+
+        // Initialize Firebase Auth
+        mAuth = FirebaseAuth.getInstance();
+
+        // Initialize Firebase Database
+        gUser = mAuth.getCurrentUser();
+        database = FirebaseDatabase.getInstance();
+        FirebaseStorage mFirebaseStorage = FirebaseStorage.getInstance();
+        usersRef = database.getReference(gUserDetailsRef);
+        shopsRef = database.getReference(gShopDetailsRef);
+        myRef = usersRef.child(mAuth.getCurrentUser().getUid());
+        geoRefUser = database.getReference(gUserOnlineGeoRef);
+        geoRefShop = database.getReference(gShopGeoRef);
+
+        // Initialize Geofire references
+        geoFireUser = new GeoFire(geoRefUser);
+        geoFireShop = new GeoFire(geoRefShop);
+
+        // Storage reference instantiation for Image URL
+        mPhotosStorageReference = mFirebaseStorage.getReference().child(gUserPhotosStorageRef);
+    }
+
     private void createUser(){
-        userRef.addListenerForSingleValueEvent(new ValueEventListener() {
+        myRef.addListenerForSingleValueEvent(new ValueEventListener() {
                 @Override
             public void onDataChange(DataSnapshot dataSnapshot) {
                 if(!dataSnapshot.child("name").exists()){
                     //User does not exist
-                    myRef.child(mUser.getUid()).setValue(new User(mUser.getEmail(),mUser.getDisplayName(),null, default_img, 0));
+                    usersRef.child(gUser.getUid()).setValue(new User(gUser.getEmail(), gUser.getDisplayName(),null, default_img, 0));
                 }
             }
 
@@ -419,7 +435,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         });
     }
 
-    private void attachDatabaseReadListener() {
+    private void attachUserDatabaseReadListener() {
         if (userRefListener == null) {
             userRefListener = new ValueEventListener() {
                 @Override
@@ -436,9 +452,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                         } else {
                             profilePicture.setImageResource(R.drawable.no_icon);
                         }
-                        //Log.d(TAG, "Else/Value is: " + uUser.getPhotoUrl().toString() + uUser.getName().toString());
-
-
                 }
 
                 @Override
@@ -447,13 +460,13 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 }
             };
 
-            userRef.addValueEventListener(userRefListener);
+            myRef.addValueEventListener(userRefListener);
         }
     }
 
     private void detachDatabaseReadListener() {
         if (userRefListener != null) {
-            userRef.removeEventListener(userRefListener);
+            myRef.removeEventListener(userRefListener);
             userRefListener = null;
         }
     }
@@ -487,12 +500,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     private void setUserActive() {
-        userRef.child("online").setValue("True");
-        userRef.child("online").onDisconnect().setValue("False");
+        myRef.child("online").setValue("True");
+        myRef.child("online").onDisconnect().setValue("False");
     }
 
-    private void removeGeoOnDiscon(FirebaseUser user){
-        geoRefUser.child(user.getUid()).onDisconnect().removeValue();
+    private void removeGeoOnDiscon(){
+        geoRefUser.child(gUser.getUid()).onDisconnect().removeValue();
     }
 
     private void setGeoQueryUser(Location location){
@@ -554,6 +567,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             mMap.setMyLocationEnabled(true);
         }
         getLocationPermission();
+        setInfoWindow();
     }
 
     private void getLocationPermission() {
@@ -630,7 +644,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
     }
 
-
     // Trigger new location updates at interval/newest version
     private void startLocationUpdates() {
 
@@ -673,7 +686,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 Looper.myLooper());
     }
 
-
     @Override
     public void onLocationChanged(Location location) {
 
@@ -693,14 +705,14 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         //LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
 
         uUser.setLocation(mLastLocation);
-        userRef.child("latitude").setValue(location.getLatitude());
-        userRef.child("longitude").setValue(location.getLongitude());
+        myRef.child("latitude").setValue(location.getLatitude());
+        myRef.child("longitude").setValue(location.getLongitude());
         geoFireUser.setLocation(mAuth.getCurrentUser().getUid(),new GeoLocation(mLastLocation.getLatitude(), mLastLocation.getLongitude()));
         //geoFireShop.setLocation(mAuth.getCurrentUser().getUid(),new GeoLocation(mLastLocation.getLatitude(), mLastLocation.getLongitude()));
         setGeoQueryUser(location);
         setGeoQueryShop(location);
-        fetchUsers();
-        fetchShops();
+        fetchNearbyUsers();
+        fetchNearbyShops();
         //centerMap();
     }
 
@@ -805,8 +817,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                         Log.d(TAG," Might be Null if no further log message");
                         if (mUserMarker != null) {
                             mUserMarker.setIcon(BitmapDescriptorFactory.fromBitmap(createCustomMarker(mContext,mURL,m_name, bitmap)));
-                            setInfoWindow(bitmap);
+                            //setInfoWindow(bitmap);
                             Log.d(TAG,"Custom Marker Set!!!! ");
+                            hashMapBitmap.put(mUserMarker.getSnippet(),bitmap);
 
                         }
                     }
@@ -814,13 +827,14 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     }
 
-    private void fetchUsers() {
+    //Function to run GeoQuery to find users within radius
+    private void fetchNearbyUsers() {
         if (userQueryListener == null){
             userQueryListener = new GeoQueryEventListener() {
 
                 @Override
                 public void onKeyEntered(String key, GeoLocation location) {
-                    getMarkerData(key);
+                    getUserMarkerDetails(key);
                 }
 
                 @Override
@@ -829,6 +843,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                         Marker marker = hashMapUserMarker.get(key);
                         marker.remove();
                         hashMapUserMarker.remove(key);
+                        hashMapObjects.remove(key);
                     }
                 }
 
@@ -855,14 +870,14 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
     }
 
-    private void fetchShops() {
+    //Function to run GeoQuery to find shops within radius
+    private void fetchNearbyShops() {
         if (shopQueryListener == null) {
             shopQueryListener = new GeoQueryEventListener() {
 
                 @Override
                 public void onKeyEntered(String key, GeoLocation location) {
-                    Marker marker = mMap.addMarker(new MarkerOptions().position(new LatLng(location.latitude, location.longitude)).title(key).icon(BitmapDescriptorFactory.fromBitmap(createCustomMarker(MainActivity.this,R.drawable.shop,key))));
-                    hashMapShopMarker.put(key, marker);
+                    getShopMarkerDetails(key);
                 }
 
                 @Override
@@ -872,6 +887,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     if (marker != null) {
                         marker.remove();
                         hashMapShopMarker.remove(key);
+                        hashMapObjects.remove(key);
                     }
 
                 }
@@ -896,17 +912,21 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
     }
 
-    //admin level function
+    /* admin level function */
     private void setShops(){
         GeoLocation shopLoc = new GeoLocation(33.044959,-96.973157);
         DatabaseReference shopRef = database.getReference("shops");
-        shopRef.child("Evolution Dynamics").setValue(new Shop(shopLoc));
-        geoFireShop.setLocation("Evolution Dynamics",shopLoc);
+        String lKey = shopRef.child("shops").push().getKey();
+        Shop shop = new Shop(shopLoc, "Evolution Dynamics", "tuner", lKey);
+        shopRef.child(lKey).setValue(shop);
+
+        geoFireShop.setLocation(lKey,shopLoc);
     }
 
-    private void getMarkerData(final String key){
+    //Function to get user details from Firebase DB
+    private void getUserMarkerDetails(final String key){
 
-        Query query = myRef.orderByKey().equalTo(key);
+        Query query = usersRef.orderByKey().equalTo(key);
         query.addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
             public void onDataChange(DataSnapshot dataSnapshot) {
@@ -923,6 +943,28 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         });
     }
 
+    //Function to get shop details from Firebase DB
+    private void getShopMarkerDetails(final String key){
+
+        Query query = shopsRef.orderByKey().equalTo(key);
+        query.addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(DataSnapshot dataSnapshot) {
+                for (DataSnapshot shop : dataSnapshot.getChildren()){
+                    setShopMarker(shop);
+                    Log.d("Details", key);
+                }
+
+            }
+
+            @Override
+            public void onCancelled(DatabaseError databaseError) {
+                //TODO handle if canceled
+            }
+        });
+    }
+
+    //Create the user marker from data retrieved and set to map
     private void setUserMarker(DataSnapshot dataSnapshot) {
         // When a location update is received, put or update
         // its value in hashMapUserMarker, which contains all the markers
@@ -934,14 +976,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         // If condition to check that User data loaded is not your own/this is your first time being loaded to map/User is online :: Add marker to map
         if ((!hashMapUserMarker.containsKey(key)) && (!key.equals(mAuth.getCurrentUser().getUid())) && ((dataSnapshot.child("online").getValue().equals("True")))) {
-            hashMapUserMarker.put(key, mMap.addMarker(new MarkerOptions().title(dataSnapshot.child("name").getValue().toString()).position(location).snippet(dataSnapshot.child("points").getValue().toString()).icon(BitmapDescriptorFactory.fromBitmap(
+            hashMapUserMarker.put(key, mMap.addMarker(new MarkerOptions().title(dataSnapshot.child("name").getValue().toString()).position(location).snippet(key).icon(BitmapDescriptorFactory.fromBitmap(
                     createCustomMarker(this,R.drawable.no_icon,dataSnapshot.child("name").getValue().toString())))));
             setCustomIcon(this,dataSnapshot.child("photoUrl").getValue().toString(),dataSnapshot.child("name").getValue().toString(), hashMapUserMarker.get(key));
-
-            //Logging
-            Log.d(TAG, "Location from Firebase is : "+ location.longitude + "and " + location.latitude);
-            Log.d(TAG, "Loop has added user " + key + " added to hashmap. User key is : " + mAuth.getCurrentUser().getUid() + " Boolean is set to:" + dataSnapshot.child("online").getValue().equals("True"));
-            Log.d(TAG, "Validation 1:" + hashMapUserMarker.containsKey(key) + (key.equals(mAuth.getCurrentUser().getUid())) + ((dataSnapshot.child("online").getValue().equals("True"))));
+            hashMapObjects.put(key,dataSnapshot);
         }
 
         LatLngBounds.Builder builder = new LatLngBounds.Builder();
@@ -950,10 +988,40 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
     }
 
-    private void userInit(Bundle savedInstanceState, FirebaseUser mUser){
+    //Create the shop marker from data retrieved and set to map
+    private void setShopMarker(DataSnapshot dataSnapshot) {
+        // When a location update is received, put or update
+        // its value in hashMapShopMarker, which contains all the markers
+        // for locations received
+        String key = dataSnapshot.getKey();
+        String lName = dataSnapshot.child("name").getValue().toString();
+        double lat = Double.parseDouble(dataSnapshot.child("latitude").getValue().toString());
+        double lng = Double.parseDouble(dataSnapshot.child("longitude").getValue().toString());
+        String lSpecialty = dataSnapshot.child("specialty").getValue().toString();
+        LatLng location = new LatLng(lat, lng);
+        Log.d("SetShopMarker",key);
+        // If condition to check that User data loaded is not your own/this is your first time being loaded to map/User is online :: Add marker to map
+        if (lSpecialty.equals("tuner")) {
+            hashMapShopMarker.put(key, mMap.addMarker(new MarkerOptions().position(new LatLng(location.latitude, location.longitude)).title(lName).snippet(key).icon(BitmapDescriptorFactory.fromBitmap(createCustomMarker(MainActivity.this, R.drawable.shop, lName)))));
+            hashMapBitmap.put(key,BitmapFactory.decodeResource(getResources(),R.drawable.shop));
+            hashMapObjects.put(key,dataSnapshot);
+        }
+        if(lSpecialty.equals("wraps")){
+            hashMapShopMarker.put(key,mMap.addMarker(new MarkerOptions().position(new LatLng(location.latitude, location.longitude)).title(lName).snippet(key).icon(BitmapDescriptorFactory.fromBitmap(createCustomMarker(MainActivity.this,R.drawable.wrench,lName)))));
+            hashMapBitmap.put(key,BitmapFactory.decodeResource(getResources(),R.drawable.wrench));
+            hashMapObjects.put(key,dataSnapshot);
+        }
+
+    LatLngBounds.Builder builder = new LatLngBounds.Builder();
+        for (Marker marker : hashMapShopMarker.values()) {
+        builder.include(marker.getPosition());
+    }
+    }
+
+    private void userInit(Bundle savedInstanceState){
         //User Object Initialization
-            uUser = new User(mUser.getEmail(), mUser.getDisplayName(), null, default_img, 0);
-            Log.d(TAG, " USER OBJECT CREATED : "+ uUser.toString());
+            uUser = new User(gUser.getEmail(), gUser.getDisplayName(), null, default_img, 0);
+            Log.d(TAG, " USER OBJECT CREATED : "+ gUser.toString());
 
 
     }
@@ -968,9 +1036,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     TextView tvUserName = v.findViewById(R.id.userName);
                     TextView profileText = v.findViewById(R.id.pointsText);
                     CircleImageView userImage = v.findViewById(R.id.userImg);
-                    userImage.setImageBitmap(bitmap);
                     tvUserName.setText(marker.getTitle());
                     profileText.setText(marker.getSnippet());
+
+                    if(bitmap != null){
+                    userImage.setImageBitmap(bitmap);}
+
                     if(Integer.parseInt(marker.getSnippet()) >= 1000){
                         profileText.setTextColor(ContextCompat.getColor(getApplicationContext(),R.color.gold));
                     }
@@ -1001,28 +1072,24 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         });
     }
 
-    //Infowindow constructor for shops
-    private void setInfoWindow(Double rating){
+    //Infowindow constructor prototype TODO
+    private void setInfoWindow(){
         if(mMap != null){
             mMap.setInfoWindowAdapter(new GoogleMap.InfoWindowAdapter(){
                 @Override
                 public View getInfoWindow(Marker marker) {
+
                     View v = getLayoutInflater().inflate(R.layout.custom_info_win,null);
-                    TextView tvUserName = v.findViewById(R.id.userName);
-                    TextView profileText = v.findViewById(R.id.pointsText);
-                    CircleImageView userImage = v.findViewById(R.id.userImg);
-                    //userImage.setImageBitmap(bitmap);
+                    final TextView tvUserName = v.findViewById(R.id.userName);
+                    final TextView profileText = v.findViewById(R.id.pointsText);
+                    final CircleImageView userImage = v.findViewById(R.id.userImg);
+                    DatabaseReference lUserRef = usersRef.child(marker.getSnippet());
+
                     tvUserName.setText(marker.getTitle());
-                    profileText.setText(marker.getSnippet());
-                    if(Integer.parseInt(marker.getSnippet()) >= 1000){
-                        profileText.setTextColor(ContextCompat.getColor(getApplicationContext(),R.color.gold));
-                    }
-                    if(Integer.parseInt(marker.getSnippet()) >= 200 && Integer.parseInt(marker.getSnippet()) < 1000){
-                        profileText.setTextColor(ContextCompat.getColor(getApplicationContext(),R.color.silver));
-                    }
-                    else if(Integer.parseInt(marker.getSnippet()) < 200){
-                        profileText.setTextColor(ContextCompat.getColor(getApplicationContext(),R.color.bronze));
-                    }
+                    userImage.setImageBitmap(hashMapBitmap.get(marker.getSnippet()));
+
+                    //profileText.setText(hashMapObjects.get(marker.getSnippet()));
+
 
                     return v;
                 }
