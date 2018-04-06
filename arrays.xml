@@ -1,0 +1,696 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="year">
+        <item>2018</item>
+        <item>2017</item>
+        <item>2016</item>
+        <item>2015</item>
+        <item>2014</item>
+        <item>2013</item>
+        <item>2012</item>
+        <item>2011</item>
+        <item>2010</item>
+        <item>2009</item>
+        <item>2008</item>
+        <item>2007</item>
+        <item>2006</item>
+        <item>2005</item>
+        <item>2004</item>
+        <item>2003</item>
+        <item>2002</item>
+        <item>2001</item>
+        <item>2000</item>
+        <item>1999</item>
+        <item>1998</item>
+        <item>1997</item>
+        <item>1996</item>
+        <item>1995</item>
+        <item>1994</item>
+        <item>1993</item>
+        <item>1992</item>
+        <item>1991</item>
+        <item>1990</item>
+        <item>1989</item>
+        <item>1988</item>
+        <item>1987</item>
+        <item>1986</item>
+        <item>1985</item>
+        <item>1984</item>
+        <item>1983</item>
+        <item>1982</item>
+        <item>1981</item>
+        <item>1980</item>
+        <item>1979</item>
+        <item>1978</item>
+        <item>1977</item>
+        <item>1976</item>
+        <item>1975</item>
+        <item>1974</item>
+        <item>1973</item>
+        <item>1972</item>
+        <item>1971</item>
+        <item>1970</item>
+    </string-array>
+    <string-array name="make">
+        <item>Acura</item>
+        <item>Audi</item>
+        <item>Bentley</item>
+        <item>BMW </item>
+        <item>Bugatti</item>
+        <item>Buick</item>
+        <item>Cadillac</item>
+        <item>Chevrolet</item>
+        <item>Chrysler</item>
+        <item>Datsun</item>
+        <item>Dodge</item>
+        <item>Ferrari</item>
+        <item>Fiat</item>
+        <item>Ford</item>
+        <item>Honda</item>
+        <item>Hummer</item>
+        <item>Hyundai</item>
+        <item>Jaguar</item>
+        <item>Jeep</item>
+        <item>KIA</item>
+        <item>Lamborghini</item>
+        <item>Land Rover</item>
+        <item>Lexus</item>
+        <item>Lotus</item>
+        <item>Maserati</item>
+        <item>Mazda</item>
+        <item>McLaren</item>
+        <item>Mercedes-Benz</item>
+        <item>Mini</item>
+        <item>Mitsubishi</item>
+        <item>Nissan</item>
+        <item>Pontiac</item>
+        <item>Porsche</item>
+        <item>Rolls-Royce</item>
+        <item>Subaru</item>
+        <item>Tesla</item>
+        <item>Toyota</item>
+        <item>Volkswagen</item>
+        <item>Volvo</item>
+    </string-array>
+    <string-array name="Acura">
+        <item>Integra</item>
+        <item>NSX</item>
+        <item>RL</item>
+        <item>RSX</item>
+        <item>TLX</item>
+        <item>TSX</item>
+    </string-array>
+    <string-array name="AstonMartin">
+        <item>DB7 Zagato</item>
+        <item>DB9</item>
+        <item>DB11</item>
+        <item>DBS</item>
+        <item>Lagonda</item>
+        <item>Rapide</item>
+        <item>Rapide S</item>
+        <item>V12 Vantage</item>
+        <item>Vanquish</item>
+        <item>V8 Vantage</item>
+        <item>Virage</item>
+    </string-array>
+    <string-array name="Audi">
+        <item>RS3</item>
+        <item>RS4</item>
+        <item>RS5</item>
+        <item>RS6</item>
+        <item>RS7</item>
+        <item>R8</item>
+        <item>S1</item>
+        <item>S3</item>
+        <item>S4</item>
+        <item>S5</item>
+        <item>S6</item>
+        <item>S7</item>
+        <item>S8</item>
+        <item>TT</item>
+        <item>TTRS</item>
+    </string-array>
+    <string-array name="Bentley">
+        <item>Continental</item>
+        <item>Flying Spur</item>
+    </string-array>
+    <string-array name="BMW">
+        <item>128i</item>
+        <item>135i</item>
+        <item>228i</item>
+        <item>230i</item>
+        <item>M2</item>
+        <item>M235i</item>
+        <item>M240i</item>
+        <item>320i</item>
+        <item>325i</item>
+        <item>328i</item>
+        <item>330i</item>
+        <item>335i</item>
+        <item>340i</item>
+        <item>M3</item>
+        <item>428i</item>
+        <item>430i</item>
+        <item>435i</item>
+        <item>440i</item>
+        <item>M4</item>
+        <item>525i</item>
+        <item>528i</item>
+        <item>530i</item>
+        <item>535i</item>
+        <item>540i</item>
+        <item>550i</item>
+        <item>M5</item>
+        <item>M550i</item>
+        <item>640i</item>
+        <item>650i</item>
+        <item>M6</item>
+        <item>740i</item>
+        <item>750i</item>
+        <item>M760i</item>
+        <item>i8</item>
+        <item>Z3</item>
+        <item>Z4</item>
+        <item>Z8</item>
+    </string-array>
+    <string-array name="Bugatti">
+        <item>Veyron</item>
+    </string-array>
+    <string-array name="Buick">
+        <item>Grand National</item></string-array>
+    <string-array name="Cadillac">
+        <item>CTS</item>
+    </string-array>
+    <string-array name="Chevrolet">
+        <item>Camaro</item>
+        <item>Cobalt</item>
+        <item>Corvette</item>
+        <item>SS</item>
+    </string-array>
+    <string-array name="Chrysler">
+        <item>300</item>
+    </string-array>
+    <string-array name="Datsun">
+        <item>240Z</item>
+        <item>300zx</item>
+        <item>510</item>
+    </string-array>
+    <string-array name="Dodge">
+        <item>Challenger</item>
+        <item>Charger</item>
+        <item>Dart</item>
+        <item>Durango</item>
+        <item>Neon</item>
+        <item>Stealth</item>
+        <item>Viper</item>
+    </string-array>
+    <string-array name="Ferrari">
+        <item>458 Italia</item>
+        <item>488</item>
+        <item>812 Superfast</item>
+        <item>California</item>
+        <item>Enzo</item>
+        <item>F12tdf</item>
+        <item>GTC4Lusso</item>
+        <item>LaFerrari</item>
+        <item>Portofino</item>
+        <item>Testarossa</item>
+    </string-array>
+    <string-array name="Fiat">
+        <item>124 Spider</item>
+        <item>500</item>
+    </string-array>
+    <string-array name="Ford">
+        <item>F-150</item>
+        <item>Fiesta</item>
+        <item>Focus</item>
+        <item>GT</item>
+        <item>Mustang</item>
+        <item>Taurus</item>
+    </string-array>
+    <string-array name="Honda">
+        <item>Accord</item>
+        <item>Civic</item>
+        <item>CRX</item>
+        <item>Del Sol</item>
+        <item>Prelude</item>
+        <item>S2000</item>
+    </string-array>
+    <string-array name="Hummer">
+        <item>H1</item>
+        <item>H2</item>
+        <item>H3</item>
+    </string-array>
+    <string-array name="Hyundai">
+        <item>Genesis Coupe</item>
+        <item>Tiburon</item>
+        <item>Veloster</item>
+    </string-array>
+    <string-array name="Infiniti">
+        <item>G35</item>
+        <item>G37</item>
+        <item>Q50</item>
+        <item>Q60</item>
+    </string-array>
+    <string-array name="Jaguar">
+        <item>XF</item>
+        <item>XK</item>
+        <item>XJ</item>
+    </string-array>
+    <string-array name="Jeep">
+        <item>Cherokee</item>
+        <item>Grand Cherokee</item>
+        <item>Wrangler</item>
+    </string-array>
+    <string-array name="Kia">
+        <item>Stinger</item>
+    </string-array>
+    <string-array name="Lamborghini">
+        <item>Aventador</item>
+        <item>Centenario</item>
+        <item>Countach</item>
+        <item>Diablo</item>
+        <item>Gallardo</item>
+        <item>Huracan</item>
+        <item>Murcielago</item>
+        <item>Reventon</item>
+        <item>Veneno</item>
+    </string-array>
+    <string-array name="LandRover">
+        <item>Range Rover</item>
+        <item>Evoque</item>
+    </string-array>
+    <string-array name="Lexus">
+        <item>GS</item>
+        <item>IS</item>
+        <item>LC</item>
+        <item>LFA</item>
+        <item>RC</item>
+        <item>SC</item>
+    </string-array>
+    <string-array name="Lotus">
+        <item>Elise</item>
+        <item>Evora</item>
+    </string-array>
+    <string-array name="Maserati">
+        <item>Alfieri</item>
+        <item>Ghibli</item>
+        <item>GranCabrio</item>
+        <item>GranTurismo</item>
+        <item>Levante</item>
+        <item>Quattroporte</item>
+    </string-array>
+    <string-array name="Mazda">
+        <item>Mazda3</item>
+        <item>Mazda6</item>
+        <item>MX-5</item>
+        <item>RX-7</item>
+        <item>RX-8</item>
+    </string-array>
+    <string-array name="McLaren">
+        <item>650 S</item>
+        <item>675LT</item>
+        <item>720 S</item>
+        <item>P1</item>
+        <item>P1 GTR</item>
+        <item>Senna</item>
+    </string-array>
+    <string-array name="MercedesBenz">
+        <item>CLK-Class</item>
+        <item>SL-Class</item>
+    </string-array>
+    <string-array name="Mini">
+        <item>Cooper</item>
+    </string-array>
+    <string-array name="Mitsubishi">
+        <item>3000 GT</item>
+        <item>Eclipse</item>
+        <item>Galant</item>
+        <item>Lancer</item>
+        <item>Mirage</item>
+        <item>Starion</item>
+    </string-array>
+    <string-array name="Nissan">
+        <item>240sx</item>
+        <item>300zx</item>
+        <item>350z</item>
+        <item>370z</item>
+        <item>Juke</item>
+        <item>Silvia</item>
+        <item>R32 Skyline GTR</item>
+        <item>R33 Skyline GTR</item>
+        <item>R34 Skyline GTR</item>
+        <item>GT-R</item>
+    </string-array>
+    <string-array name="Pontiac">
+        <item>G8</item>
+        <item>GTO</item>
+        <item>Firebird</item>
+        <item>Trans Am</item>
+        <item>Trans Am Firehawk</item>
+        <item>Trans Am WS6</item>
+        <item>Solstice</item>
+
+    </string-array>
+    <string-array name="Porsche">
+        <item>718 Boxster</item>
+        <item>718 Cayman</item>
+        <item>911</item>
+        <item>Boxster</item>
+        <item>Cayman</item>
+    </string-array>
+    <string-array name="RollsRoyce">
+        <item>Dawn</item>
+        <item>Ghost</item>
+        <item>Phantom</item>
+        <item>Wraith</item>
+    </string-array>
+    <string-array name="Subaru">
+        <item>BRZ</item>
+        <item>Impreza</item>
+        <item>WRX</item>
+    </string-array>
+    <string-array name="Tesla">
+        <item>Model 3</item>
+        <item>Model S</item>
+        <item>Roadster</item>
+    </string-array>
+    <string-array name="Toyota">
+        <item>Corolla</item>
+        <item>Celica</item>
+        <item>MR2</item>
+        <item>Supra</item>
+    </string-array>
+    <string-array name="Volkswagen">
+        <item>Beetle</item>
+        <item>Golf</item>
+        <item>GTI</item>
+        <item>Jetta</item>
+        <item>Passat</item>
+        <item>R32</item>
+    </string-array>
+    <string-array name="Volvo">
+        <item>C30</item>
+        <item>S40</item>
+        <item>S60</item>
+        <item>S80</item>
+        <item>S90</item>
+    </string-array>
+
+
+    <string-array name="Base">
+        <item>Base</item>
+    </string-array>
+    <string-array name="Mit3000GT">
+        <item>Base</item>
+        <item>VR4</item>
+    </string-array>
+    <string-array name="C30">
+        <item>Base</item>
+        <item>R-Design</item>
+    </string-array>
+    <string-array name="Challenger">
+        <item>Base</item>
+        <item>SRT</item>
+        <item>SRT8</item>
+        <item>SRT8 Yellow Jacket</item>
+        <item>SRT Demon</item>
+        <item>SRT Hellcat</item>
+        <item>Scat Pack</item>
+        <item>Rallye Redline</item>
+    </string-array>
+    <string-array name="Charger">
+        <item>Base</item>
+        <item>SRT</item>
+        <item>SRT8</item>
+        <item>SRT8 Super Bee</item>
+        <item>SRT Hellcat</item>
+        <item>R/T Scat Pack</item>
+        <item>Scat Pack</item>
+        <item>Rallye</item>
+    </string-array>
+    <string-array name="Cherokee">
+        <item>Base</item>
+        <item>Trailhawk</item>
+    </string-array>
+    <string-array name="Chrysler300">
+        <item>Base</item>
+        <item>SRT8</item>
+    </string-array>
+    <string-array name="Camaro">
+        <item>Base</item>
+        <item>SS</item>
+        <item>Z28</item>
+    </string-array>
+    <string-array name="Celica">
+        <item>Base</item>
+        <item>All-Trac</item>
+    </string-array>
+    <string-array name="Civic">
+        <item>Base</item>
+        <item>Si</item>
+        <item>Si Mugen</item>
+        <item>Type-R</item>
+    </string-array>
+    <string-array name="CLK">
+        <item>320</item>
+        <item>350</item>
+        <item>430</item>
+        <item>500</item>
+        <item>55 AMG</item>
+        <item>550</item>
+        <item>63 AMG</item>
+    </string-array>
+    <string-array name="Cobalt">
+        <item>Base</item>
+        <item>SS</item>
+    </string-array>
+    <string-array name="Cooper">
+        <item>Base</item>
+        <item>S</item>
+    </string-array>
+    <string-array name="Corolla">
+        <item>Base</item>
+        <item>GT-S</item>
+    </string-array>
+    <string-array name="CRX">
+        <item>Base</item>
+        <item>Si</item>
+    </string-array>
+    <string-array name="CTS">
+        <item>Base</item>
+        <item>V</item>
+    </string-array>
+    <string-array name="Dart">
+        <item>Base</item>
+        <item>GT Sport</item>
+        <item>Rallye</item>
+    </string-array>
+    <string-array name="DelSol">
+        <item>S</item>
+        <item>Si</item>
+    </string-array>
+    <string-array name="Durango">
+        <item>Base</item>
+        <item>SRT</item>
+    </string-array>
+    <string-array name="Eclipse">
+        <item>Base</item>
+        <item>GST</item>
+        <item>GSX</item>
+    </string-array>
+    <string-array name="F150">
+        <item>Base</item>
+        <item>Lightning</item>
+        <item>Raptor</item>
+        <item>SVT Raptor</item>
+    </string-array>
+    <string-array name="Fiesta">
+        <item>Base</item>
+        <item>ST</item>
+    </string-array>
+    <string-array name="Focus">
+        <item>Base</item>
+        <item>ST</item>
+        <item>RS</item>
+    </string-array>
+    <string-array name="Fiat500">
+        <item>Base</item>
+        <item>Abarth</item>
+    </string-array>
+    <string-array name="Galant">
+        <item>Base</item>
+        <item>VR4</item>
+    </string-array>
+    <string-array name="Genesis">
+        <item>2.0T</item>
+        <item>3.8</item>
+    </string-array>
+    <string-array name="GrandCherokee">
+        <item>Base</item>
+        <item>SRT</item>
+        <item>SRT8</item>
+    </string-array>
+    <string-array name="GS">
+        <item>200t</item>
+        <item>300</item>
+        <item>350</item>
+        <item>400</item>
+        <item>430</item>
+        <item>450h</item>
+        <item>460</item>
+        <item>F</item>
+    </string-array>
+    <string-array name="GTR">
+        <item>Base</item>
+        <item>NISMO</item>
+    </string-array>
+    <string-array name="Impreza">
+        <item>Base</item>
+        <item>STI</item>
+    </string-array>
+    <string-array name="Integra">
+        <item>GS</item>
+        <item>GSR</item>
+        <item>LS</item>
+        <item>Type R</item>
+    </string-array>
+    <string-array name="IS">
+        <item>200t</item>
+        <item>250</item>
+        <item>250C</item>
+        <item>300</item>
+        <item>350</item>
+        <item>F</item>
+    </string-array>
+    <string-array name="Juke">
+        <item>Base</item>
+        <item>NISMO</item>
+        <item>NISMO RS</item>
+    </string-array>
+    <string-array name="Lancer">
+        <item>Base</item>
+        <item>Evolution</item>
+        <item>Ralliart</item>
+    </string-array>
+    <string-array name="LC">
+        <item>500</item>
+        <item>500h</item>
+    </string-array>
+    <string-array name="Mazda3">
+        <item>Base</item>
+        <item>MazdaSpeed</item>
+    </string-array>
+    <string-array name="Mazda6">
+        <item>Base</item>
+        <item>MazdaSpeed</item>
+    </string-array>
+    <string-array name="MR2">
+        <item>Base</item>
+        <item>Turbo</item>
+    </string-array>
+    <string-array name="MX5">
+        <item>Base</item>
+        <item>MazdaSpeed</item>
+    </string-array>
+    <string-array name="Neon">
+        <item>Base</item>
+        <item>SRT-4</item>
+    </string-array>
+    <string-array name="Nis300zx">
+    <item>Base</item>
+    <item>Turbo</item>
+</string-array>
+    <string-array name="Nis350z">
+        <item>Base</item>
+        <item>NISMO</item>
+    </string-array>
+    <string-array name="Nis370z">
+        <item>Base</item>
+        <item>NISMO</item>
+    </string-array>
+    <string-array name="Porsche911">
+        <item>Carrera</item>
+        <item>Carrera 4</item>
+        <item>Carrera 4S</item>
+        <item>Carrera GTS</item>
+        <item>Carrera S</item>
+        <item>GT3</item>
+        <item>GT3 RS</item>
+        <item>Targa 4S</item>
+        <item>Turbo</item>
+        <item>Turbo S</item>
+    </string-array>
+    <string-array name="Prelude">
+        <item>S</item>
+        <item>Si</item>
+        <item>SH</item>
+    </string-array>
+    <string-array name="RangeRover">
+        <item>Base</item>
+        <item>Sport</item>
+    </string-array>
+    <string-array name="RC">
+        <item>200t</item>
+        <item>300</item>
+        <item>350</item>
+        <item>F</item>
+    </string-array>
+    <string-array name="RSX">
+        <item>Base</item>
+        <item>Type-S</item>
+    </string-array>
+    <string-array name="S40">
+        <item>Base</item>
+        <item>R-Design</item>
+    </string-array>
+    <string-array name="S60">
+        <item>Base</item>
+        <item>T5 R-Design</item>
+        <item>T6 Polestar</item>
+        <item>T6 R-Design</item>
+    </string-array>
+    <string-array name="SC">
+        <item>300</item>
+        <item>400</item>
+        <item>430</item>
+    </string-array>
+    <string-array name="SL">
+        <item>320</item>
+        <item>400</item>
+        <item>450</item>
+        <item>500</item>
+        <item>55 AMG</item>
+        <item>550</item>
+        <item>600</item>
+        <item>63 AMG</item>
+        <item>65 AMG</item>
+    </string-array>
+    <string-array name="Stealth">
+        <item>Base</item>
+        <item>R/T</item>
+    </string-array>
+    <string-array name="Supra">
+        <item>Base</item>
+        <item>Turbo</item>
+    </string-array>
+    <string-array name="Veloster">
+        <item>Base</item>
+        <item>Rally Edition</item>
+        <item>Turbo</item>
+        <item>Turbo R-Spec</item>
+    </string-array>
+    <string-array name="Viper">
+        <item>Base</item>
+        <item>ACR</item>
+        <item>GTC</item>
+        <item>GTS</item>
+        <item>RT/10</item>
+        <item>SRT-10</item>
+    </string-array>
+
+
+
+
+
+</resources>

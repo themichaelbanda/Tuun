@@ -1,4 +1,4 @@
-package com.penguinsonabeach.tuun;
+package com.penguinsonabeach.tuun.Activity;
 
 import android.content.Intent;
 import android.os.Bundle;
