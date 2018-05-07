@@ -87,7 +87,7 @@ public class CarsRecycleViewAdapter extends RecyclerView.Adapter<CarsRecycleView
             vehicle = itemView.findViewById(R.id.Vehicle);
             trim = itemView.findViewById(R.id.VehicleTrim);
             mods = itemView.findViewById(R.id.VehicleMods);
-            vehicleThumbnail =itemView.findViewById(R.id.car_thumbnail);
+            vehicleThumbnail = itemView.findViewById(R.id.car_thumbnail);
             verifiedIcon = itemView.findViewById(R.id.verified);
         }
 

@@ -6,6 +6,7 @@ import android.support.design.widget.TabLayout;
 import android.support.v4.view.ViewPager;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
+import android.view.MenuItem;
 import android.widget.TextView;
 
 import com.ToxicBakery.viewpager.transforms.RotateUpTransformer;
@@ -22,7 +23,7 @@ import de.hdodenhof.circleimageview.CircleImageView;
  */
 
 public class UserProfileActivity extends AppCompatActivity implements TabLayout.OnTabSelectedListener{
-    String gName,gPoints,gKey, gUrl;
+    String gName,gPoints,gKey, gUrl, gDate, gClub;
     private TabLayout tabLayout;
     private ViewPager viewPager;
     Bundle gBundle;
@@ -37,6 +38,8 @@ public class UserProfileActivity extends AppCompatActivity implements TabLayout.
         //Adding toolbar to the activity
         Toolbar toolbar = findViewById(R.id.toolbarUser);
         setSupportActionBar(toolbar);
+        getSupportActionBar().setDisplayHomeAsUpEnabled(true);
+        getSupportActionBar().setDisplayShowHomeEnabled(true);
 
         //Initializing the tablayout
         tabLayout = findViewById(R.id.tabLayoutUser);
@@ -71,6 +74,8 @@ public class UserProfileActivity extends AppCompatActivity implements TabLayout.
             gName = gBundle.getString("name");
             gPoints = String.valueOf(gBundle.getInt("points"));
             gKey = gBundle.getString("key");
+            gDate = gBundle.getString("date");
+            gClub = gBundle.getString("club");
 
             CircleImageView userProfileImg = findViewById(R.id.userProfileImg);
             TextView userNameText = findViewById(R.id.userNameTV);
@@ -86,6 +91,16 @@ public class UserProfileActivity extends AppCompatActivity implements TabLayout.
                             .override(200,200))
                     .into(userProfileImg);
         }
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+
+        if (item.getItemId() == android.R.id.home) {
+            finish();
+        }
+
+        return super.onOptionsItemSelected(item);
     }
 
     @Override

@@ -13,7 +13,6 @@ import android.support.v7.app.AlertDialog;
 import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
 import android.support.v7.widget.helper.ItemTouchHelper;
-import android.text.Layout;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.LayoutInflater;
@@ -45,7 +44,6 @@ import com.google.firebase.storage.FirebaseStorage;
 import com.google.firebase.storage.OnProgressListener;
 import com.google.firebase.storage.StorageReference;
 import com.google.firebase.storage.UploadTask;
-import com.penguinsonabeach.tuun.Activity.GarageActivity;
 import com.penguinsonabeach.tuun.Adapter.CarsRecycleViewAdapter;
 import com.penguinsonabeach.tuun.Object.Car;
 import com.penguinsonabeach.tuun.R;
@@ -286,71 +284,6 @@ public class GarageCarsFragment extends Fragment implements CarsRecycleViewAdapt
 
                     }
                 });
-        /*builder.setNegativeButton("Verify", new DialogInterface.OnClickListener() {
-            @Override
-            public void onClick(DialogInterface dialog, int which) {
-
-                // Initialize a new instance of LayoutInflater service
-                LayoutInflater inflater = (LayoutInflater) getActivity().getSystemService(LAYOUT_INFLATER_SERVICE);
-
-                // Inflate the custom layout/view
-                View customView = inflater.inflate(R.layout.popup_verify,null);
-
-                // Get a reference for the layout within popup window
-                LinearLayout linearLayout1 = customView.findViewById(R.id.linearLayout1);
-
-                // Get a reference for the layout within popup window
-                final EditText vinEditText = customView.findViewById(R.id.editTextVin);
-
-                // Initialize a new instance of popup window
-                mPopupWindow = new PopupWindow(
-                        customView,
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                );
-
-                // Set an elevation value for popup window
-                // Call requires API level 21
-                if(Build.VERSION.SDK_INT>=21){
-                    mPopupWindow.setElevation(5.0f);
-                    mPopupWindow.setFocusable(true);
-                }
-
-                // Get a reference for the custom view close button
-                final Button verifyVinButton =  customView.findViewById(R.id.verifyVinButton);
-
-                if(currentCar.getVerified() == true){
-                    verifyVinButton.setText(R.string.ok);
-                    vinEditText.setEnabled(false);
-                    vinEditText.setText(R.string.verified);
-                    vinEditText.setGravity(Gravity.CENTER);
-                }
-
-                // Set a click listener for the popup window close button
-                verifyVinButton.setOnClickListener(new View.OnClickListener() {
-                    @Override
-                    public void onClick(View view) {
-                        if(currentCar.getVerified() == true){
-                            mPopupWindow.dismiss();
-                        }
-                        else {
-                            String vinEntry = vinEditText.getText().toString();
-                            if (vinEntry.length() < 17) {
-                                Toast.makeText(getActivity(), "Enter Full VIN Please", Toast.LENGTH_SHORT).show();
-                                return;
-                            }
-
-                            verifyVehicle(currentCar, vinEntry);
-                            // Dismiss the popup window
-                            mPopupWindow.dismiss();
-                        }
-                    }
-                });
-                mPopupWindow.showAtLocation(linearLayout1, Gravity.CENTER,0,0);
-                dialog.cancel();
-            }
-        });*/
-
 
         AlertDialog alert = builder.create();
         alert.show();

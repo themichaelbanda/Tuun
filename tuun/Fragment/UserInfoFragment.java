@@ -4,6 +4,7 @@ import android.graphics.Typeface;
 import android.os.Bundle;
 import android.support.v4.app.Fragment;
 import android.support.v4.content.ContextCompat;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -29,19 +30,22 @@ public class UserInfoFragment extends Fragment {
     public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState){
         String lPoints = String.valueOf(this.getArguments().getInt("points"));
         String lDate = String.valueOf(this.getArguments().getString("date"));
+        String lClub = String.valueOf(this.getArguments().getString("club"));
         Typeface customFont = Typeface.createFromAsset(getActivity().getAssets(),"fonts/Capture_it.ttf");
         View rootView = inflater.inflate(R.layout.fragment_user_home,container,false);
 
-        TextView pTv = rootView.findViewById(R.id.pointsLabelTextView);
-        TextView pointsTv = rootView.findViewById(R.id.pointsTextView);
-        TextView clubTv = rootView.findViewById(R.id.clubLabelTextView);
-        TextView dateTv = rootView.findViewById(R.id.joinLabelTextView);
-        TextView joinDate = rootView.findViewById(R.id.joinTextView);
+        TextView pTv = rootView.findViewById(R.id.infoPointsTitle);
+        TextView pointsTv = rootView.findViewById(R.id.infoPointsValue);
+        TextView cTv = rootView.findViewById(R.id.infoClubTitle);
+        TextView clubTv = rootView.findViewById(R.id.infoClubValue);
+        TextView dateTv = rootView.findViewById(R.id.infoJoinTitle);
+        TextView joinDate = rootView.findViewById(R.id.infoJoinValue);
         pTv.setTypeface(customFont);
-        clubTv.setTypeface(customFont);
+        cTv.setTypeface(customFont);
         dateTv.setTypeface(customFont);
 
         setPointsText(pointsTv, lPoints);
+        clubTv.setText(lClub);
         joinDate.setText(lDate);
 
         return rootView;

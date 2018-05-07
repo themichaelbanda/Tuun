@@ -9,6 +9,7 @@ import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Toast;
 
 import com.google.firebase.database.ChildEventListener;
 import com.google.firebase.database.DataSnapshot;
@@ -44,7 +45,6 @@ public class UserInfoCarsFragment extends Fragment implements CarsRecycleViewAda
         }
         return userTab2;
     }
-
     public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState){
         lUser = String.valueOf(this.getArguments().getString("key"));
         Typeface customFont = Typeface.createFromAsset(getActivity().getAssets(),"fonts/Capture_it.ttf");
@@ -53,11 +53,11 @@ public class UserInfoCarsFragment extends Fragment implements CarsRecycleViewAda
         carRecycleView.setLayoutManager(new LinearLayoutManager(getActivity()));
         adapter = new CarsRecycleViewAdapter(cars,getActivity());
         carRecycleView.setAdapter(adapter);
+        adapter.setOnClick(this);
         setUpFirebase();
         getCars();
        return rootView;
     }
-
     private void setUpFirebase(){
         firebaseDatabase = FirebaseDatabase.getInstance();
         userRef = firebaseDatabase.getReference("users").child(lUser).child("vehicles");
@@ -100,7 +100,8 @@ public class UserInfoCarsFragment extends Fragment implements CarsRecycleViewAda
         }
     }
 
-    public void onCarClicked(int position){
+    @Override
+    public void onCarClicked(final int position){
         //gCarPhotoReference.child(cars.get(position).getId());
     }
 }

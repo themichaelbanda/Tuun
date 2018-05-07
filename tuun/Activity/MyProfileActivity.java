@@ -1,58 +1,62 @@
 package com.penguinsonabeach.tuun.Activity;
 
-import android.graphics.Typeface;
 import android.os.Bundle;
 import android.support.design.widget.TabLayout;
 import android.support.v4.view.ViewPager;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
+import android.util.Log;
 import android.view.MenuItem;
-import android.widget.TextView;
 
 import com.ToxicBakery.viewpager.transforms.RotateUpTransformer;
 import com.bumptech.glide.Glide;
-import com.bumptech.glide.load.engine.DiskCacheStrategy;
 import com.bumptech.glide.request.RequestOptions;
-import com.penguinsonabeach.tuun.Adapter.PagerAdapterGarage;
-import com.penguinsonabeach.tuun.Adapter.PagerAdapterUser;
+import com.penguinsonabeach.tuun.Adapter.PagerAdapterMyProfile;
 import com.penguinsonabeach.tuun.R;
 
 import de.hdodenhof.circleimageview.CircleImageView;
 
-/**
- * Created by Phoenix on 3/25/2018.
- */
-
-public class GarageActivity extends AppCompatActivity implements TabLayout.OnTabSelectedListener{
+public class MyProfileActivity extends AppCompatActivity implements TabLayout.OnTabSelectedListener{
     private TabLayout tabLayout;
     private ViewPager viewPager;
+    private String URL;
     Bundle gBundle;
 
 
     @Override
     protected void onCreate(Bundle bundle){
         super.onCreate(bundle);
-        setContentView(R.layout.activity_garage);
+        setContentView(R.layout.activity_myprofile);
+
+        gBundle = getIntent().getExtras();
+
+        CircleImageView circleImageView = findViewById(R.id.myProfileHeaderImg);
+        URL = getIntent().getExtras().getString("photoUrl").toString();
+
+        Glide.with(this)
+                .load(URL)
+                .apply(RequestOptions.circleCropTransform())
+                .into(circleImageView);
 
         //Adding toolbar to the activity
-        Toolbar toolbar = findViewById(R.id.toolbarGarage);
+        Toolbar toolbar = findViewById(R.id.toolbarMyProfile);
         setSupportActionBar(toolbar);
         getSupportActionBar().setDisplayHomeAsUpEnabled(true);
         getSupportActionBar().setDisplayShowHomeEnabled(true);
 
         //Initializing the tablayout
-        tabLayout = findViewById(R.id.tabLayoutGarage);
+        tabLayout = findViewById(R.id.tabLayoutMyProfile);
 
-        tabLayout.addTab(tabLayout.newTab().setIcon(R.drawable.car_icon));
-        tabLayout.addTab(tabLayout.newTab().setIcon(R.drawable.plus_icon));
+        tabLayout.addTab(tabLayout.newTab().setIcon(R.drawable.home_icon));
+        tabLayout.addTab(tabLayout.newTab().setIcon(R.drawable.racing_icon));
         tabLayout.setTabGravity(TabLayout.GRAVITY_FILL);
 
         //Initializing viewPager
-        viewPager = findViewById(R.id.pagerGarage);
+        viewPager = findViewById(R.id.pagerMyProfile);
         viewPager.setOffscreenPageLimit(2);
 
         //Creating our pager adapter
-        PagerAdapterGarage adapter = new PagerAdapterGarage(getSupportFragmentManager(), tabLayout.getTabCount(), gBundle);
+        PagerAdapterMyProfile adapter = new PagerAdapterMyProfile(getSupportFragmentManager(), tabLayout.getTabCount(), gBundle);
 
         //Adding adapter to pager
         viewPager.setAdapter(adapter);
@@ -89,5 +93,5 @@ public class GarageActivity extends AppCompatActivity implements TabLayout.OnTab
     public void onTabReselected(TabLayout.Tab tab) {
 
     }
-}
 
+}

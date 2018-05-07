@@ -1,11 +1,13 @@
 package com.penguinsonabeach.tuun.Activity;
 
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.Uri;
 import android.support.annotation.NonNull;
+import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
@@ -118,7 +120,6 @@ public class LoginActivity extends AppCompatActivity {
                     // User is signed out
                     Log.d(TAG, "onAuthStateChanged:signed_out");
                 }
-                //...perform next task such as MainActivity
             }
         };
 
@@ -153,9 +154,12 @@ public class LoginActivity extends AppCompatActivity {
 
     //Sign in with Google
     protected void signIn() {
-        Intent signInIntent = Auth.GoogleSignInApi.getSignInIntent(mGoogleApiClient);
-        startActivityForResult(signInIntent, RC_SIGN_IN);
-        mProgressBar.setVisibility(ProgressBar.VISIBLE);
+        if(checkConnection()) {
+            Intent signInIntent = Auth.GoogleSignInApi.getSignInIntent(mGoogleApiClient);
+            startActivityForResult(signInIntent, RC_SIGN_IN);
+            mProgressBar.setVisibility(ProgressBar.VISIBLE);
+        }
+        else {createNetworkAlert();}
     }
 
     @Override
@@ -213,10 +217,30 @@ public class LoginActivity extends AppCompatActivity {
         NetworkInfo activeNetwork = cm.getActiveNetworkInfo();
         boolean isConnected = activeNetwork != null &&
                 activeNetwork.isConnectedOrConnecting();
-        if(!isConnected){
-            Toast.makeText(this,"You Are Not Connected to a network!",Toast.LENGTH_LONG).show();
-        }
+
         return isConnected;
     }
+
+    //Create Alert Dialog for Network error
+    private void createNetworkAlert(){
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle(R.string.network_title);
+        builder.setIcon(R.mipmap.ic_launcher);
+        builder.setMessage(R.string.network_message);
+        builder.setCancelable(true);
+
+        builder.setPositiveButton(
+                "OK!",
+                new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int id) {
+                        dialog.cancel();
+                    }
+                });
+
+
+        AlertDialog alert = builder.create();
+        alert.show();
+    }
+
 
 }
