@@ -10,14 +10,8 @@ import android.view.MenuItem;
 import android.widget.TextView;
 
 import com.ToxicBakery.viewpager.transforms.RotateUpTransformer;
-import com.bumptech.glide.Glide;
-import com.bumptech.glide.load.engine.DiskCacheStrategy;
-import com.bumptech.glide.request.RequestOptions;
 import com.penguinsonabeach.tuun.Adapter.PagerAdapterGarage;
-import com.penguinsonabeach.tuun.Adapter.PagerAdapterUser;
 import com.penguinsonabeach.tuun.R;
-
-import de.hdodenhof.circleimageview.CircleImageView;
 
 /**
  * Created by Phoenix on 3/25/2018.

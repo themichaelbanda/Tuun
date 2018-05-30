@@ -102,6 +102,7 @@ import com.google.firebase.storage.StorageReference;
 import com.google.firebase.storage.UploadTask;
 import com.penguinsonabeach.tuun.Network.ConnectionLiveData;
 import com.penguinsonabeach.tuun.Network.ConnectionModel;
+import com.penguinsonabeach.tuun.Object.Meet;
 import com.penguinsonabeach.tuun.R;
 import com.penguinsonabeach.tuun.Object.Shop;
 import com.penguinsonabeach.tuun.Object.User;
@@ -126,13 +127,16 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private static final int RC_PHOTO_PICKER = 2;
     private static final long UPDATE_INTERVAL_IN_MILLISECONDS = 1000;
     private static final long FASTEST_UPDATE_INTERVAL_IN_MILLISECONDS = UPDATE_INTERVAL_IN_MILLISECONDS / 2;
-    private static final double searchRadius = 60;
+    private static final double userSearchRadius = 60;
+    private static final double userAttendRadius = .5;
     private static final String gUserDetailsRef = "users";
     private static final String gShopDetailsRef = "shops";
-    private static final String gMeetsGeoRef = "meets";
+    private static final String gMeetsDetailsRef = "meets";
+    private static final String gMeetsGeoRef = "meets-location";
     private static final String gUserOnlineGeoRef = "online-users";
     private static final String gUserPhotosStorageRef = "user_photos";
     private static final String gShopGeoRef = "shop-location";
+    private static final String gUserNameDir = "usernames";
     private final static String KEY_LOCATION = "location";
     private static final String TAG = MainActivity.class.getSimpleName();
     private final String default_img = "https://firebasestorage.googleapis.com/v0/b/tuun-67689.appspot.com/o/user_photos%2Fno_icon.png?alt=media&token=85744938-bef8-4e56-bbbb-ab357393f8ae";
@@ -143,6 +147,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private final double mphMultiplier =  2.23694;
     private LocationCallback mLocationCallback;
     private Location mLastLocation;
+    private GeoLocation gLastLocation;
     private FirebaseAuth mAuth;
     private FirebaseAuth.AuthStateListener mAuthStateListener;
     private FirebaseUser gUser;
@@ -160,25 +165,22 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private User uUser;
     private ImageView profilePicture;
     private FirebaseDatabase database;
-    private DatabaseReference geoRefUser, geoRefShop, geoRefMeet, myRef, shopsRef, usersRef, userNamesRef;
+    private DatabaseReference geoRefUser, geoRefShop, geoRefMeet, myRef, shopsRef, usersRef, userNamesRef, meetsRef;
     private GeoFire geoFireUser, geoFireShop, geoFireMeet;
-    private GeoQuery geoQueryUser, geoQueryShop, geoQueryMeet;
+    private GeoQuery geoQueryUser, geoQueryShop, geoQueryMeet, geoQueryMeetAttend;
     private StorageReference gPhotoStorageRef;
     private ValueEventListener userLiveListener, userNamesListener, userDataListener;
-    private GeoQueryEventListener userQueryListener, shopQueryListener, meetQueryListener;
+    private GeoQueryEventListener userQueryListener, shopQueryListener, meetQueryListener, meetAttendQueryListener;
     private final HashMap<String, Marker> hashMapUserMarker = new HashMap<>();
     private final HashMap<String, Marker> hashMapShopMarker = new HashMap<>();
     private final HashMap<String, Marker> hashMapMeetMarker = new HashMap<>();
     private final HashMap<String, Bitmap> hashMapBitmap = new HashMap<>();
     private final HashMap<String, Shop> hashMapShopObjects = new HashMap<>();
-    //private final HashMap<String, Meet> hashMapMeetObjects = new HashMap<>();
+    private final HashMap<String, Meet> hashMapMeetObjects = new HashMap<>();
     private final HashMap<String, User> hashMapUserObjects = new HashMap<>();
     private Typeface customFont;
 
     private LifecycleRegistry lifecycleRegistry = new LifecycleRegistry(this);
-
-
-
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -202,9 +204,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         //Set up listener for connection status
         checkConnection(this);
-
-        //Remove on disconnect
-        removeGeoOnDiscon();
 
         // Database filtering
         //usersRef.limitToFirst(1000);
@@ -395,6 +394,14 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                             createNetworkAlert();
                         }
                         break;
+                    case 3:
+                        if(connected) {
+                            Intent messageIntent = new Intent(MainActivity.this, MessagesActivity.class);
+                            startActivity(messageIntent);
+                        }else {
+                            createNetworkAlert();
+                        }
+                        break;
                     case 4:
                         if(connected) {
                             Intent leaderIntent = new Intent(MainActivity.this, LeaderboardActivity.class);
@@ -502,7 +509,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     // Method to handle appropriate actions when user signs out
     private void signOut() {
         myRef.child("online").setValue("False");
-        geoFireUser.removeLocation(gUser.getUid());
         if(!getFusedLocationProviderClient(this).equals(null)){
         getFusedLocationProviderClient(this).removeLocationUpdates(mLocationCallback); }
         FirebaseAuth.getInstance().signOut();
@@ -513,7 +519,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     //Method called when permissions are denied in order to force user out of application
     private void forceOut(){
         myRef.child("online").setValue("False");
-        geoFireUser.removeLocation(gUser.getUid());
         FirebaseAuth.getInstance().signOut();
         Intent sOut = new Intent(MainActivity.this, LoginActivity.class);
         startActivity(sOut);
@@ -564,14 +569,16 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         database = FirebaseDatabase.getInstance();
         FirebaseStorage mFirebaseStorage = FirebaseStorage.getInstance();
         usersRef = database.getReference(gUserDetailsRef);
-        userNamesRef = database.getReference("usernames");
+        meetsRef = database.getReference(gMeetsDetailsRef);
+        userNamesRef = database.getReference(gUserNameDir);
         shopsRef = database.getReference(gShopDetailsRef);
         myRef = usersRef.child(mAuth.getCurrentUser().getUid());
+
+
+        // Initialize Geofire references
         geoRefUser = database.getReference(gUserOnlineGeoRef);
         geoRefShop = database.getReference(gShopGeoRef);
         geoRefMeet = database.getReference(gMeetsGeoRef);
-
-        // Initialize Geofire references
         geoFireUser = new GeoFire(geoRefUser);
         geoFireShop = new GeoFire(geoRefShop);
         geoFireMeet = new GeoFire(geoRefMeet);
@@ -591,7 +598,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 else{
                     //Set Object from DB
                     uUser = dataSnapshot.getValue(User.class);
-                    addDailyPoints();
+                    updateLoginDate();
 
                     //Use gathered data to set items
                     mTitle.setText(uUser.getName());
@@ -614,88 +621,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         });
     }
 
-    protected void createUserName(){
-
-        final PopupWindow mPopupWindow;
-        // Initialize a new instance of LayoutInflater service
-        LayoutInflater inflater = (LayoutInflater) this.getSystemService(LAYOUT_INFLATER_SERVICE);
-
-        // Inflate the custom layout/view
-        View customView = inflater.inflate(R.layout.popup_username,null);
-
-        // Get a reference for the layout within popup window
-        LinearLayout linearLayout1 = customView.findViewById(R.id.linearLayout1);
-
-        // Get a reference for the layout within popup window
-        final EditText userNameEditText = customView.findViewById(R.id.editTextUserName);
-        final TextView userNameTextView = customView.findViewById(R.id.userNameTitleTv);
-        userNameTextView.setTypeface(customFont);
-
-        // Initialize a new instance of popup window
-        mPopupWindow = new PopupWindow(
-                customView,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        );
-        mPopupWindow.setFocusable(true);
-        mPopupWindow.setOutsideTouchable(false);
-
-        // Set an elevation value for popup window
-        // Call requires API level 21
-        if(Build.VERSION.SDK_INT>=21){
-            mPopupWindow.setElevation(5.0f);
-        }
-
-        // Get a reference for the custom view close button
-        final Button verifyNameButton =  customView.findViewById(R.id.verifyNameButton);
-
-
-        // Set a click listener for the popup window close button
-        verifyNameButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                if(uUser.getUserName() != null){
-                    mPopupWindow.dismiss();
-                    Log.d("UserName: ", "First Loop");
-                }
-                else if(userNameEditText.getText().toString().length() < 1){
-                        Toast.makeText(MainActivity.this, "Username Cannot Be Empty!", Toast.LENGTH_SHORT).show();
-                        return;
-                }
-                else{
-                     userNamesListener = new ValueEventListener() {
-                        @Override
-                        public void onDataChange(DataSnapshot dataSnapshot) {
-                            if(dataSnapshot.child(userNameEditText.getText().toString()).exists()){
-                                Toast.makeText(MainActivity.this," User Name is Taken, Please try again!", Toast.LENGTH_SHORT).show();
-                            }else{
-                                myRef.child("username").setValue(userNameEditText.getText().toString()).addOnSuccessListener(new OnSuccessListener<Void>() {
-                                    @Override
-                                    public void onSuccess(Void aVoid) {
-                                        userNamesRef.child(userNameEditText.getText().toString()).setValue(gUser.getUid());
-                                        uUser.setUserName(userNameEditText.getText().toString());
-                                        Toast.makeText(MainActivity.this,"Welcome "+userNameEditText.getText().toString(),Toast.LENGTH_SHORT).show();
-                                        mPopupWindow.dismiss();
-                                    }
-                                });
-                            }
-                        }
-
-                        @Override
-                        public void onCancelled(DatabaseError databaseError) {
-
-                        }
-                    };
-                     userNamesRef.addListenerForSingleValueEvent(userNamesListener);
-                }
-                    // Dismiss the popup window
-                    mPopupWindow.dismiss();
-
-            }
-        });
-        mPopupWindow.showAtLocation(linearLayout1, Gravity.CENTER,0,0);
-    }
-
     private void attachUserLiveListener(){
         if(userLiveListener == null) {
             userLiveListener = new ValueEventListener() {
@@ -715,7 +640,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     }
 
                     if (!dataSnapshot.child("username").exists()) {
-                        //Prompt for user name entry
                         mTitle.setText(uUser.getName());
                     }
                     else{
@@ -769,7 +693,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
     }
 
-    private void attachUsersListener(final String key){
+    private void attachUserHazardListener(final String key){
 
         userDataListener = new ValueEventListener() {
             @Override
@@ -786,7 +710,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     }
 
-    private void detachUsersListener(final String key){
+    private void detachUserHazardListener(final String key){
         if (userDataListener != null) {
             usersRef.removeEventListener(userDataListener);
             userDataListener = null;
@@ -798,7 +722,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         myRef.child("online").setValue("True");
         myRef.child("online").onDisconnect().setValue("False");
         myRef.child("hazard").onDisconnect().setValue(false);
-        geoRefUser.child(mAuth.getUid()).onDisconnect().removeValue();
+        //geoRefUser.child(mAuth.getUid()).onDisconnect().removeValue();
 
     }
 
@@ -858,7 +782,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     private void setGeoQueryUser(Location location){
         if(geoQueryUser == null){
-            geoQueryUser = geoFireUser.queryAtLocation(new GeoLocation(location.getLatitude(),location.getLongitude()),searchRadius);
+            geoQueryUser = geoFireUser.queryAtLocation(new GeoLocation(location.getLatitude(),location.getLongitude()), userSearchRadius);
         }
         else{
             geoQueryUser.setCenter(new GeoLocation(location.getLatitude(),location.getLongitude()));
@@ -867,7 +791,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     private void setGeoQueryShop(Location location){
         if(geoQueryShop == null){
-            geoQueryShop = geoFireShop.queryAtLocation(new GeoLocation(location.getLatitude(),location.getLongitude()),searchRadius);
+            geoQueryShop = geoFireShop.queryAtLocation(new GeoLocation(location.getLatitude(),location.getLongitude()), userSearchRadius);
         }
         else{
             geoQueryShop.setCenter(new GeoLocation(location.getLatitude(),location.getLongitude()));
@@ -876,26 +800,34 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     private void setGeoQueryMeet(Location location){
         if(geoQueryMeet == null){
-            geoQueryMeet = geoFireShop.queryAtLocation(new GeoLocation(location.getLatitude(),location.getLongitude()),searchRadius);
+            geoQueryMeet = geoFireMeet.queryAtLocation(new GeoLocation(location.getLatitude(),location.getLongitude()), userSearchRadius);
         }
         else{
             geoQueryMeet.setCenter(new GeoLocation(location.getLatitude(),location.getLongitude()));
         }
     }
 
-    private void addDailyPoints(){
-        if(uUser.getLastlogin() != null) {
-            if (!uUser.getLastlogin().equals(getDate())) {
-                myRef.child("points").setValue(uUser.getPoints() + dailyReward);
-                launchPointsToast(dailyReward);
-                updateLoginDate();
-            }
+    private void setGeoQueryMeetAttend(Location location){
+        if(geoQueryMeetAttend == null){
+            geoQueryMeetAttend = geoFireMeet.queryAtLocation(new GeoLocation(location.getLatitude(),location.getLongitude()), userAttendRadius);
+        }
+        else{
+            geoQueryMeetAttend.setCenter(new GeoLocation(location.getLatitude(),location.getLongitude()));
         }
     }
 
     private void updateLoginDate(){
-        uUser.setLastlogin(getDate());
-        myRef.child("lastlogin").setValue(uUser.getLastlogin());
+        if(uUser.getLastlogin() != null) {
+            if (!uUser.getLastlogin().equals(getDate())) {
+                uUser.setLastlogin(getDate());
+                myRef.child("lastlogin").setValue(uUser.getLastlogin()).addOnSuccessListener(new OnSuccessListener<Void>() {
+                    @Override
+                    public void onSuccess(Void aVoid) {
+                        launchPointsToast(dailyReward);
+                    }
+                });
+            }
+        }
     }
 
     /******************************/
@@ -1106,9 +1038,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 setUserLocation(location);
                 setGeoQueryUser(location);
                 setGeoQueryShop(location);
-                //setGeoQueryMeet(location);
+                setGeoQueryMeet(location);
+                setGeoQueryMeetAttend(location);
                 fetchNearbyUsers();
                 fetchNearbyShops();
+                fetchNearbyMeets();
+                attendNearbyMeets();
             }
             //outer faster update interval method calls
             setUserSpeed(location);
@@ -1185,7 +1120,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                         marker.remove();
                         hashMapUserMarker.remove(key);
                         hashMapUserObjects.remove(key);
-                        detachUsersListener(key);
+                        detachUserHazardListener(key);
 
                     }
                 }
@@ -1269,7 +1204,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
                 @Override
                 public void onKeyEntered(String key, GeoLocation location) {
-                    setMeetMarker(key,location);
+                    getMeetMarkerDetails(key);
+                    Log.d("Meets Geofire: ", key);
                 }
 
                 @Override
@@ -1279,6 +1215,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     if (marker != null) {
                         marker.remove();
                         hashMapMeetMarker.remove(key);
+                        hashMapMeetObjects.remove(key);
                     }
 
                 }
@@ -1303,6 +1240,45 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
     }
 
+    //Function to run GeoQuery to find if within meets range
+    private void attendNearbyMeets(){
+        if (meetAttendQueryListener == null) {
+            meetAttendQueryListener = new GeoQueryEventListener() {
+                @Override
+                public void onKeyEntered(String key, GeoLocation location) {
+                    meetsRef.child(key).child("users").child(mAuth.getCurrentUser().getUid()).setValue(mAuth.getCurrentUser().getDisplayName());
+                    myRef.child("meet").child(key).setValue(location);
+                    Log.d("Meet attendance: ", key);
+                }
+
+                @Override
+                public void onKeyExited(String key) {
+                    meetsRef.child(key).child("users").child(mAuth.getCurrentUser().getUid()).removeValue();
+                    myRef.child("meet").child(key).removeValue();
+
+                }
+
+                @Override
+                public void onKeyMoved(String key, GeoLocation location) {
+
+                }
+
+                @Override
+                public void onGeoQueryReady() {
+                    // ...
+                }
+
+                @Override
+                public void onGeoQueryError(DatabaseError error) {
+                    // ...
+                }
+
+            };
+            geoQueryMeetAttend.addGeoQueryEventListener(meetAttendQueryListener);
+        }
+    }
+
+
     /* admin level function */
     private void addShop(){
         GeoLocation shopLoc = new GeoLocation(33.044959,-96.973157);
@@ -1315,9 +1291,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     //Add meet
-    private void addMeet(final String meet, final GeoLocation location){
+    private void addNewMeet(final Meet meet){
 
-        GeoQuery geoQuery = geoFireMeet.queryAtLocation(location,10);
+        GeoQuery geoQuery = geoFireMeet.queryAtLocation(new GeoLocation(meet.latitude,meet.longitude),10);
         geoQuery.addGeoQueryDataEventListener(new GeoQueryDataEventListener() {
             HashMap<String,GeoLocation> temp = new HashMap<>();
             @Override
@@ -1343,7 +1319,14 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             @Override
             public void onGeoQueryReady() {
                 if(temp.isEmpty()){
-                    geoFireMeet.setLocation(meet,location);
+                    String lmeetId = meetsRef.push().getKey();
+                    geoFireMeet.setLocation(lmeetId,new GeoLocation(meet.latitude,meet.longitude));
+                    meetsRef.child(lmeetId).setValue(meet);
+                    launchMeetNameToast(meet.getName()+" Created!");
+
+                }
+                else{
+                    launchMeetNameToast("There is already a meet nearby!");
                 }
             }
 
@@ -1363,6 +1346,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             public void onDataChange(DataSnapshot dataSnapshot) {
                 for (DataSnapshot person : dataSnapshot.getChildren()){
                     setUserMarker(person);
+                    Log.d("User Details", key);
                 }
 
             }
@@ -1383,7 +1367,28 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             public void onDataChange(DataSnapshot dataSnapshot) {
                 for (DataSnapshot shop : dataSnapshot.getChildren()){
                     setShopMarker(shop);
-                    Log.d("Details", key);
+                    Log.d("Shop Details", key);
+                }
+
+            }
+
+            @Override
+            public void onCancelled(DatabaseError databaseError) {
+                //TODO handle if canceled
+            }
+        });
+    }
+
+    //Function to get meet details from Firebase DB
+    private void getMeetMarkerDetails(final String key){
+
+        Query query = meetsRef.orderByKey().equalTo(key);
+        query.addListenerForSingleValueEvent(new ValueEventListener() {
+            @Override
+            public void onDataChange(DataSnapshot dataSnapshot) {
+                for (DataSnapshot meet : dataSnapshot.getChildren()){
+                    setMeetMarker(meet);
+                    Log.d("Meet Details", key);
                 }
 
             }
@@ -1420,7 +1425,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 hashMapUserMarker.put(key, mMap.addMarker(new MarkerOptions().title(name).position(location).snippet(key).icon(BitmapDescriptorFactory.fromBitmap(
                         createCustomMarker(this, R.drawable.no_icon, dataSnapshot.child("name").getValue().toString())))));
                 setCustomIcon(this, dataSnapshot.child("photoUrl").getValue().toString(), name, hashMapUserMarker.get(key));
-
                 convertSnapshotToUser(dataSnapshot);
             }
 
@@ -1461,10 +1465,22 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
     }
 
-    //Create the shop marker from data retrieved and set to map
-    private void setMeetMarker(String key, GeoLocation location) {
+    //Create the meet marker from data retrieved and set to map
+    private void setMeetMarker(DataSnapshot dataSnapshot) {
+        // When a location update is received, put or update
+        // its value in hashMapShopMarker, which contains all the markers
+        // for locations received
+        String key = dataSnapshot.getKey();
+        String mName = dataSnapshot.child("name").getValue().toString();
+        double lat = Double.parseDouble(dataSnapshot.child("latitude").getValue().toString());
+        double lng = Double.parseDouble(dataSnapshot.child("longitude").getValue().toString());
+        LatLng location = new LatLng(lat, lng);
+        Log.d("SetMeetMarker",key);
 
-        hashMapMeetMarker.put(key, mMap.addMarker(new MarkerOptions().position(new LatLng(location.latitude, location.longitude)).title("Meet").snippet(key).icon(BitmapDescriptorFactory.fromBitmap(createCustomMarker(MainActivity.this, R.mipmap.ic_group,"Meet")))));
+            hashMapMeetMarker.put(key, mMap.addMarker(new MarkerOptions().position(new LatLng(location.latitude, location.longitude)).title(mName).snippet(key).icon(BitmapDescriptorFactory.fromBitmap(createCustomMeetMarker(MainActivity.this, R.mipmap.ic_group_blue, mName)))));
+            hashMapBitmap.put(key,BitmapFactory.decodeResource(getResources(),R.mipmap.ic_group_blue));
+            convertSnapshotToMeet(dataSnapshot);
+
 
         LatLngBounds.Builder builder = new LatLngBounds.Builder();
         for (Marker marker : hashMapMeetMarker.values()) {
@@ -1487,21 +1503,47 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
                     tvUserName.setText(marker.getTitle());
                     userImage.setImageBitmap(hashMapBitmap.get(marker.getSnippet()));
-                    if (hashMapUserObjects.containsKey(marker.getSnippet())){
+                    if(hashMapUserObjects.containsKey(marker.getSnippet())){
                         lPoints = String.valueOf(hashMapUserObjects.get(marker.getSnippet()).getPoints());
-                    } else if(hashMapShopObjects.containsKey(marker.getSnippet())){
+                        pointsText.setText(lPoints);
+                        if(Integer.parseInt(lPoints) >= 1000){
+                            pointsText.setTextColor(ContextCompat.getColor(getApplicationContext(),R.color.gold));
+                        }
+                        if(Integer.parseInt(lPoints) >= 200 && Integer.parseInt(lPoints) < 1000){
+                            pointsText.setTextColor(ContextCompat.getColor(getApplicationContext(),R.color.silver));
+                        }
+                        else if(Integer.parseInt(lPoints) < 200){
+                            pointsText.setTextColor(ContextCompat.getColor(getApplicationContext(),R.color.bronze));
+                        }
+
+                    }if(hashMapShopObjects.containsKey(marker.getSnippet())){
                         lPoints = String.valueOf(hashMapShopObjects.get(marker.getSnippet()).getPoints());
+
+                        pointsText.setText(lPoints);
+                        if(Integer.parseInt(lPoints) >= 1000){
+                            pointsText.setTextColor(ContextCompat.getColor(getApplicationContext(),R.color.gold));
+                        }
+                        if(Integer.parseInt(lPoints) >= 200 && Integer.parseInt(lPoints) < 1000){
+                            pointsText.setTextColor(ContextCompat.getColor(getApplicationContext(),R.color.silver));
+                        }
+                        else if(Integer.parseInt(lPoints) < 200){
+                            pointsText.setTextColor(ContextCompat.getColor(getApplicationContext(),R.color.bronze));
+                        }
+                    }if(hashMapMeetObjects.containsKey(marker.getSnippet())){
+                        lPoints = String.valueOf(hashMapMeetObjects.get(marker.getSnippet()).getCount());
+
+                        pointsText.setText(lPoints);
+                        if(Integer.parseInt(lPoints) >= 40){
+                            pointsText.setTextColor(ContextCompat.getColor(getApplicationContext(),R.color.gold));
+                        }
+                        if(Integer.parseInt(lPoints) >= 20 && Integer.parseInt(lPoints) < 40){
+                            pointsText.setTextColor(ContextCompat.getColor(getApplicationContext(),R.color.silver));
+                        }
+                        else if(Integer.parseInt(lPoints) < 20){
+                            pointsText.setTextColor(ContextCompat.getColor(getApplicationContext(),R.color.bronze));
+                        }
                     }
-                    pointsText.setText(lPoints);
-                    if(Integer.parseInt(lPoints) >= 1000){
-                        pointsText.setTextColor(ContextCompat.getColor(getApplicationContext(),R.color.gold));
-                    }
-                    if(Integer.parseInt(lPoints) >= 200 && Integer.parseInt(lPoints) < 1000){
-                        pointsText.setTextColor(ContextCompat.getColor(getApplicationContext(),R.color.silver));
-                    }
-                    else if(Integer.parseInt(lPoints) < 200){
-                        pointsText.setTextColor(ContextCompat.getColor(getApplicationContext(),R.color.bronze));
-                    }
+
 
                     return v;
                 }
@@ -1531,6 +1573,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
                 if(hashMapShopObjects.containsKey(marker.getSnippet())){
                     //launch shop profile
+                }
+
+                if(hashMapMeetObjects.containsKey(marker.getSnippet())){
+                  //launch meet profile
                 }
             }
         });
@@ -1582,6 +1628,28 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         return bitmap;
     }
 
+    private static Bitmap createCustomMeetMarker(Context context, @DrawableRes int resource, String _name) {
+
+        View marker = ((LayoutInflater) context.getSystemService(Context.LAYOUT_INFLATER_SERVICE)).inflate(R.layout.custom_meet_marker, null);
+
+        CircleImageView markerImage = marker.findViewById(R.id.meet_dp);
+        markerImage.setImageResource(resource);
+        TextView txt_name = marker.findViewById(R.id.meetname);
+        txt_name.setText(_name);
+
+        DisplayMetrics displayMetrics = new DisplayMetrics();
+        ((Activity) context).getWindowManager().getDefaultDisplay().getMetrics(displayMetrics);
+        marker.setLayoutParams(new ViewGroup.LayoutParams(52, ViewGroup.LayoutParams.WRAP_CONTENT));
+        marker.measure(displayMetrics.widthPixels, displayMetrics.heightPixels);
+        marker.layout(0, 0, displayMetrics.widthPixels, displayMetrics.heightPixels);
+        marker.buildDrawingCache();
+        Bitmap bitmap = Bitmap.createBitmap(marker.getMeasuredWidth(), marker.getMeasuredHeight(), Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+        marker.draw(canvas);
+
+        return bitmap;
+    }
+
     // Update existing marker with icon from URL
     private void setCustomIcon(Context context, String URL, String _name, Marker userMarker) {
         final Context mContext = context;
@@ -1618,7 +1686,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         lConvertUser.setClub(dataSnapshot.child("club").getValue().toString());
         lConvertUser.setHazard(((Boolean) dataSnapshot.child("hazard").getValue()));
         hashMapUserObjects.put(dataSnapshot.getKey(),lConvertUser);
-        attachUsersListener(dataSnapshot.getKey());
+        attachUserHazardListener(dataSnapshot.getKey());
     }
 
     //function to convert snapshot to Shop
@@ -1629,15 +1697,22 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         hashMapShopObjects.put(dataSnapshot.getKey(),lConvertShop);
     }
 
+    //function to convert snapshot to Meet
+    private void convertSnapshotToMeet(DataSnapshot dataSnapshot){
+        Meet lConvertMeet = new Meet();
+        lConvertMeet.setName(dataSnapshot.child("name").getValue().toString());
+        lConvertMeet.setCount((int) dataSnapshot.child("users").getChildrenCount());
+        hashMapMeetObjects.put(dataSnapshot.getKey(),lConvertMeet);
+    }
+
     //function to calculate and format current date. Used to set user join date.
-    private String getDate(){
+    public String getDate(){
         Date dateObject = new Date();
         String date = new SimpleDateFormat("MM/dd/yyyy").format(dateObject);
         return date;
     }
 
-    //Application feature functions
-
+    //Application Custom Toasts
     private void launchPointsToast(int Points){
         LayoutInflater inflater = getLayoutInflater();
         View layout = inflater.inflate(R.layout.toast, (ViewGroup) findViewById(R.id.toast_layout));
@@ -1654,6 +1729,24 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         pToast.setView(layout);
         pToast.show();
 
+    }
+
+    private void launchMeetNameToast(String message){
+        LayoutInflater inflater = getLayoutInflater();
+        View layout = inflater.inflate(R.layout.toast, (ViewGroup) this.findViewById(R.id.toast_layout));
+        layout.setBackgroundResource(R.drawable.borderconnection);
+        ImageView image = layout.findViewById(R.id.toastimage);
+        image.setImageResource(R.mipmap.ic_group_blue);
+        TextView text = layout.findViewById(R.id.toasttext);
+        text.setText(message);
+        text.setTypeface(customFont);
+
+
+        Toast pToast = new Toast(this);
+        pToast.setGravity(Gravity.TOP, 0, 250);
+        pToast.setDuration(Toast.LENGTH_SHORT);
+        pToast.setView(layout);
+        pToast.show();
     }
 
     private void launchConnectedToast(String connection){
@@ -1691,6 +1784,58 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         pToast.setView(layout);
         pToast.show();
     }
+
+    public void createMeetPopup(View view){
+
+        final PopupWindow mPopupWindow;
+        // Initialize a new instance of LayoutInflater service
+        LayoutInflater inflater = (LayoutInflater) MainActivity.this.getSystemService(LAYOUT_INFLATER_SERVICE);
+
+        // Inflate the custom layout/view
+        View customView = inflater.inflate(R.layout.popup_create_meet,null);
+
+        // Get a reference for the layout within popup window
+        LinearLayout linearLayout1 = customView.findViewById(R.id.linearLayout1);
+
+        // Get a reference for the layout within popup window
+        final EditText meetNameEditText = customView.findViewById(R.id.editTextMeetName);
+        final TextView meetNameTextView = customView.findViewById(R.id.meetNameTitleTv);
+        meetNameTextView.setTypeface(customFont);
+
+        // Initialize a new instance of popup window
+        mPopupWindow = new PopupWindow(
+                customView,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        mPopupWindow.setFocusable(true);
+        mPopupWindow.setOutsideTouchable(false);
+        mPopupWindow.setElevation(5.0f);
+
+        // Get a reference for the custom view close button
+        final Button verifyMeetButton =  customView.findViewById(R.id.verifyMeetButton);
+
+
+        // Set a click listener for the popup window close button
+        verifyMeetButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                if(meetNameEditText.getText().toString().length() < 1){
+                    launchMeetNameToast("Meet Name Cannot Be Empty!");
+                    return;
+                }else {
+                    GeoLocation geolocation = new GeoLocation(mLastLocation.getLatitude(),mLastLocation.getLongitude());
+                    Meet meet = new Meet(geolocation.latitude,geolocation.longitude, meetNameEditText.getText().toString());
+                    addNewMeet(meet);
+                    // Dismiss the popup window
+                }
+                mPopupWindow.dismiss();
+
+            }
+        });
+        mPopupWindow.showAtLocation(linearLayout1, Gravity.CENTER,0,0);
+    }
+
 
 
 }

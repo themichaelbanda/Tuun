@@ -102,6 +102,5 @@ public class UserInfoCarsFragment extends Fragment implements CarsRecycleViewAda
 
     @Override
     public void onCarClicked(final int position){
-        //gCarPhotoReference.child(cars.get(position).getId());
     }
 }
