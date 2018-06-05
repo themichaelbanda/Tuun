@@ -19,13 +19,15 @@ import java.util.ArrayList;
 public class MessagesRecycleViewAdapter extends RecyclerView.Adapter<MessagesRecycleViewAdapter.MessageViewHolder> {
 
     private final ArrayList<ChatMessage> messages;
-    private final ArrayList<String> photoUrl;
     private final Context mContext;
+    private CustomClickListener onClick;
 
+    public interface CustomClickListener {
+        void onMessageClicked(int position);
+    }
 
-    public MessagesRecycleViewAdapter(ArrayList<ChatMessage> messages, ArrayList<String> photoUrl, Context mContext) {
+    public MessagesRecycleViewAdapter(ArrayList<ChatMessage> messages, Context mContext) {
         this.messages = messages;
-        this.photoUrl = photoUrl;
         this.mContext = mContext;
     }
 
@@ -36,14 +38,15 @@ public class MessagesRecycleViewAdapter extends RecyclerView.Adapter<MessagesRec
     }
 
     @Override
-    public void onBindViewHolder(MessageViewHolder holder, int position) {
+    public void onBindViewHolder(final MessageViewHolder holder, int position) {
         ChatMessage currentMessage = messages.get(holder.getAdapterPosition());
-        String currentPhotoUrl = photoUrl.get(holder.getAdapterPosition());
+        String currentPhotoUrl = currentMessage.getMessagePhoto();
         holder.messageTextView.setText(currentMessage.getMessageText());
         holder.nameTextView.setText(currentMessage.getMessageUser());
         holder.messagesDate.setText(currentMessage.getMessageDate());
+        holder.messageRead.setText(currentMessage.getMessageRead());
 
-        if(currentPhotoUrl!= null){
+        if(currentPhotoUrl != null){
             Glide.with(mContext)
                     .load(currentPhotoUrl.toString())
                     .apply(RequestOptions
@@ -52,6 +55,13 @@ public class MessagesRecycleViewAdapter extends RecyclerView.Adapter<MessagesRec
                             .override(250, 250))
                     .into(holder.messagesUserThumbnail);}
 
+        holder.itemView.setOnClickListener(new View.OnClickListener(){
+
+            @Override
+            public void onClick(View v){
+                onClick.onMessageClicked(holder.getAdapterPosition());
+            }
+        });
     }
 
     @Override
@@ -60,7 +70,7 @@ public class MessagesRecycleViewAdapter extends RecyclerView.Adapter<MessagesRec
     }
 
     public static class MessageViewHolder extends RecyclerView.ViewHolder {
-        public TextView nameTextView, messageTextView, messagesDate;
+        public TextView nameTextView, messageTextView, messagesDate, messageRead;
         public ImageView messagesUserThumbnail;
 
         public MessageViewHolder(View itemView) {
@@ -69,7 +79,13 @@ public class MessagesRecycleViewAdapter extends RecyclerView.Adapter<MessagesRec
             messageTextView = itemView.findViewById(R.id.messagesLastMessageTV);
             messagesUserThumbnail = itemView.findViewById(R.id.messages_user_thumbnail);
             messagesDate= itemView.findViewById(R.id.messageDateTV);
+            messageRead = itemView.findViewById(R.id.messageReadStatusTV);
         }
+    }
+
+    public void setOnClick(CustomClickListener onClick)
+    {
+        this.onClick=onClick;
     }
 }
 

@@ -16,11 +16,6 @@ import com.penguinsonabeach.tuun.R;
 
 import java.util.ArrayList;
 
-/**
- * Created by Michael Banda
- *  Adapter for RecycleView
- */
-
 public class CarsRecycleViewAdapter extends RecyclerView.Adapter<CarsRecycleViewAdapter.CarViewHolder> {
 
     private final ArrayList<Car> cars;
@@ -97,6 +92,4 @@ public class CarsRecycleViewAdapter extends RecyclerView.Adapter<CarsRecycleView
     {
         this.onClick=onClick;
     }
-
-
 }

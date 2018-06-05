@@ -96,6 +96,7 @@ import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.database.Query;
 import com.google.firebase.database.ValueEventListener;
+import com.google.firebase.messaging.FirebaseMessaging;
 import com.google.firebase.storage.FirebaseStorage;
 import com.google.firebase.storage.OnProgressListener;
 import com.google.firebase.storage.StorageReference;
@@ -119,9 +120,10 @@ import static java.lang.Boolean.FALSE;
 import static java.lang.Boolean.TRUE;
 
 
+@SuppressWarnings("ALL")
 public class MainActivity extends AppCompatActivity implements OnMapReadyCallback, GoogleMap.OnMapLongClickListener, GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener, LocationListener, LifecycleRegistryOwner {
-    public static final int MobileData = 2;
-    public static final int WifiData = 1;
+    private static final int MobileData = 2;
+    private static final int WifiData = 1;
     private static final int dailyReward = 10;
     private static final int PERMISSIONS_REQUEST_ACCESS_FINE_LOCATION = 1;
     private static final int RC_PHOTO_PICKER = 2;
@@ -142,9 +144,8 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private final String default_img = "https://firebasestorage.googleapis.com/v0/b/tuun-67689.appspot.com/o/user_photos%2Fno_icon.png?alt=media&token=85744938-bef8-4e56-bbbb-ab357393f8ae";
     private final Intent emailIntent = new Intent(android.content.Intent.ACTION_SEND);
     private Boolean centerEnabled = TRUE;
-    public Boolean connected = false;
+    private Boolean connected = false;
     private int updateInterval = 0;
-    private final double mphMultiplier =  2.23694;
     private LocationCallback mLocationCallback;
     private Location mLastLocation;
     private GeoLocation gLastLocation;
@@ -165,7 +166,11 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private User uUser;
     private ImageView profilePicture;
     private FirebaseDatabase database;
-    private DatabaseReference geoRefUser, geoRefShop, geoRefMeet, myRef, shopsRef, usersRef, userNamesRef, meetsRef;
+    private DatabaseReference geoRefUser;
+    private DatabaseReference myRef;
+    private DatabaseReference shopsRef;
+    private DatabaseReference usersRef;
+    private DatabaseReference meetsRef;
     private GeoFire geoFireUser, geoFireShop, geoFireMeet;
     private GeoQuery geoQueryUser, geoQueryShop, geoQueryMeet, geoQueryMeetAttend;
     private StorageReference gPhotoStorageRef;
@@ -180,7 +185,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private final HashMap<String, User> hashMapUserObjects = new HashMap<>();
     private Typeface customFont;
 
-    private LifecycleRegistry lifecycleRegistry = new LifecycleRegistry(this);
+    private final LifecycleRegistry lifecycleRegistry = new LifecycleRegistry(this);
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -220,13 +225,13 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     }
 
     //Listener for Network connection
-    protected void checkConnection(final Context context){
+    private void checkConnection(final Context context){
         ConnectionLiveData connectionLiveData = new ConnectionLiveData(getApplicationContext());
         connectionLiveData.observe(this, new Observer<ConnectionModel>() {
             @Override
             public void onChanged(@Nullable ConnectionModel connection) {
                 if (connection.getIsConnected()) {
-                    if(connected == false){
+                    if(!connected){
                     connected = true;
                     gDisconnect.setVisibility(View.INVISIBLE);
                     attachAuthStateListener();
@@ -268,7 +273,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             progressDialog.show();
 
             // Get a reference to store file at user_photos/<FILENAME> TODO
-            StorageReference photoRef = gPhotoStorageRef.child(gUser.getUid().concat(".jpg"));
+            final StorageReference photoRef = gPhotoStorageRef.child(gUser.getUid().concat(".jpg"));
 
             // Upload file to Firebase Storage
             photoRef.putFile(selectedImageUri).addOnSuccessListener(this, new OnSuccessListener<UploadTask.TaskSnapshot>() {
@@ -570,21 +575,24 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         FirebaseStorage mFirebaseStorage = FirebaseStorage.getInstance();
         usersRef = database.getReference(gUserDetailsRef);
         meetsRef = database.getReference(gMeetsDetailsRef);
-        userNamesRef = database.getReference(gUserNameDir);
+        DatabaseReference userNamesRef = database.getReference(gUserNameDir);
         shopsRef = database.getReference(gShopDetailsRef);
         myRef = usersRef.child(mAuth.getCurrentUser().getUid());
 
 
         // Initialize Geofire references
         geoRefUser = database.getReference(gUserOnlineGeoRef);
-        geoRefShop = database.getReference(gShopGeoRef);
-        geoRefMeet = database.getReference(gMeetsGeoRef);
+        DatabaseReference geoRefShop = database.getReference(gShopGeoRef);
+        DatabaseReference geoRefMeet = database.getReference(gMeetsGeoRef);
         geoFireUser = new GeoFire(geoRefUser);
         geoFireShop = new GeoFire(geoRefShop);
         geoFireMeet = new GeoFire(geoRefMeet);
 
         // Storage reference instantiation for Image URL
         gPhotoStorageRef = mFirebaseStorage.getReference().child(gUserPhotosStorageRef).child(gUser.getUid());
+
+        // Set up notification subscription for messaging
+        FirebaseMessaging.getInstance().subscribeToTopic("notifications" );
     }
 
     private void checkIfFirstTime(){
@@ -728,7 +736,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     // Toggle hazard on and off
     public void toggleHazard(View v){
-        if(uUser.getHazard() == true){
+        if(uUser.getHazard()){
             uUser.setHazard(false);
             myRef.child("hazard").setValue(false);
             gHazard.setVisibility(View.INVISIBLE);
@@ -823,7 +831,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 myRef.child("lastlogin").setValue(uUser.getLastlogin()).addOnSuccessListener(new OnSuccessListener<Void>() {
                     @Override
                     public void onSuccess(Void aVoid) {
-                        launchPointsToast(dailyReward);
+                        launchPointsToast();
                     }
                 });
             }
@@ -1007,7 +1015,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             //                                          int[] grantResults)
             // to handle the case where the user grants the permission. See the documentation
             // for ActivityCompat#requestPermissions for more details.
-            return;
         }
         else {
             getFusedLocationProviderClient(this).requestLocationUpdates(mLocationRequest, mLocationCallback = new LocationCallback() {
@@ -1091,6 +1098,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     private String convertToMPH(float speed){
         double mph;
+        double mphMultiplier = 2.23694;
         mph = speed * mphMultiplier;
         return String.valueOf(Math.round(mph));
     }
@@ -1130,10 +1138,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     if(hashMapUserMarker.get(key)!= null) {
                         LatLng latLng = new LatLng(location.latitude, location.longitude);
                         hashMapUserMarker.get(key).setPosition(latLng);
-                        if(hashMapUserObjects.get(key).getHazard() == true){
+                        if(hashMapUserObjects.get(key).getHazard()){
                             hashMapUserMarker.get(key).setIcon(BitmapDescriptorFactory.fromBitmap(createCustomMarker(MainActivity.this,R.drawable.hazard,hashMapUserObjects.get(key).getName())));
                         }
-                        else if(hashMapUserObjects.get(key).getHazard() == false){
+                        else if(!hashMapUserObjects.get(key).getHazard()){
                             setCustomIcon(MainActivity.this, hashMapUserObjects.get(key).getPhotoUrl(), hashMapUserObjects.get(key).getName(), hashMapUserMarker.get(key));
                         }
 
@@ -1295,7 +1303,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         GeoQuery geoQuery = geoFireMeet.queryAtLocation(new GeoLocation(meet.latitude,meet.longitude),10);
         geoQuery.addGeoQueryDataEventListener(new GeoQueryDataEventListener() {
-            HashMap<String,GeoLocation> temp = new HashMap<>();
+            final HashMap<String,GeoLocation> temp = new HashMap<>();
             @Override
             public void onDataEntered(DataSnapshot dataSnapshot, GeoLocation location) {
             temp.put(dataSnapshot.getKey(),location);
@@ -1477,7 +1485,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         LatLng location = new LatLng(lat, lng);
         Log.d("SetMeetMarker",key);
 
-            hashMapMeetMarker.put(key, mMap.addMarker(new MarkerOptions().position(new LatLng(location.latitude, location.longitude)).title(mName).snippet(key).icon(BitmapDescriptorFactory.fromBitmap(createCustomMeetMarker(MainActivity.this, R.mipmap.ic_group_blue, mName)))));
+            hashMapMeetMarker.put(key, mMap.addMarker(new MarkerOptions().position(new LatLng(location.latitude, location.longitude)).title(mName).snippet(key).icon(BitmapDescriptorFactory.fromBitmap(createCustomMeetMarker(MainActivity.this, mName)))));
             hashMapBitmap.put(key,BitmapFactory.decodeResource(getResources(),R.mipmap.ic_group_blue));
             convertSnapshotToMeet(dataSnapshot);
 
@@ -1562,7 +1570,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     if(hashMapUserObjects.get(marker.getSnippet()).getUserName() != null){
                     bundle.putString("name", hashMapUserObjects.get(marker.getSnippet()).getUserName());}
                     else{bundle.putString("name", hashMapUserObjects.get(marker.getSnippet()).getName());}
-                    bundle.putString("key", marker.getSnippet().toString());
+                    bundle.putString("key", marker.getSnippet());
                     bundle.putInt("points", hashMapUserObjects.get(marker.getSnippet()).getPoints());
                     bundle.putString("date",hashMapUserObjects.get(marker.getSnippet()).getDate());
                     bundle.putString("club",hashMapUserObjects.get(marker.getSnippet()).getClub());
@@ -1628,12 +1636,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         return bitmap;
     }
 
-    private static Bitmap createCustomMeetMarker(Context context, @DrawableRes int resource, String _name) {
+    private static Bitmap createCustomMeetMarker(Context context, String _name) {
 
         View marker = ((LayoutInflater) context.getSystemService(Context.LAYOUT_INFLATER_SERVICE)).inflate(R.layout.custom_meet_marker, null);
 
         CircleImageView markerImage = marker.findViewById(R.id.meet_dp);
-        markerImage.setImageResource(resource);
+        markerImage.setImageResource(R.mipmap.ic_group_blue);
         TextView txt_name = marker.findViewById(R.id.meetname);
         txt_name.setText(_name);
 
@@ -1708,18 +1716,17 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     //function to calculate and format current date. Used to set user join date.
     public String getDate(){
         Date dateObject = new Date();
-        String date = new SimpleDateFormat("MM/dd/yyyy").format(dateObject);
-        return date;
+        return new SimpleDateFormat("MM/dd/yyyy").format(dateObject);
     }
 
     //Application Custom Toasts
-    private void launchPointsToast(int Points){
+    private void launchPointsToast(){
         LayoutInflater inflater = getLayoutInflater();
         View layout = inflater.inflate(R.layout.toast, (ViewGroup) findViewById(R.id.toast_layout));
         ImageView image = layout.findViewById(R.id.toastimage);
         image.setImageResource(R.drawable.trophy_icon);
         TextView text = layout.findViewById(R.id.toasttext);
-        text.setText("Daily reward : "+Points +" points");
+        text.setText("Daily reward : "+ MainActivity.dailyReward +" points");
         text.setTypeface(customFont);
 
 

@@ -4,16 +4,20 @@ import android.graphics.Typeface;
 import android.os.Bundle;
 import android.support.v4.app.Fragment;
 import android.support.v4.content.ContextCompat;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.PopupWindow;
 import android.widget.TextView;
+import android.widget.Toast;
 
+import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.database.DataSnapshot;
@@ -36,7 +40,7 @@ public class UserInfoFragment extends Fragment {
     FirebaseDatabase firebaseDatabase;
     FirebaseUser gUser;
     DatabaseReference messageRef, myRef;
-    String lUid, lName, gName;
+    String lUid, lName, gName, gPhoto;
 
     public static UserInfoFragment newInstance(Bundle arguments) {
         UserInfoFragment userTab1 = new UserInfoFragment();
@@ -107,13 +111,25 @@ public class UserInfoFragment extends Fragment {
             public void onDataChange(DataSnapshot dataSnapshot) {
                 if (dataSnapshot.child("username").exists()) {
                     gName = dataSnapshot.child("username").getValue().toString();
-                    ChatMessage lMessage = new ChatMessage(message,gName);
-                    messageRef.setValue(lMessage);
+                    gPhoto = dataSnapshot.child("photoUrl").getValue().toString();
+                    ChatMessage lMessage = new ChatMessage(message,gName,gPhoto);
+                    messageRef.setValue(lMessage).addOnSuccessListener(new OnSuccessListener<Void>() {
+                        @Override
+                        public void onSuccess(Void aVoid) {
+                            launchMessageToast(lName);
+                        }
+                    });
                 }
                 else{
                     gName = dataSnapshot.child("name").getValue().toString();
-                    ChatMessage lMessage = new ChatMessage(message,gName);
-                    messageRef.setValue(lMessage);
+                    gPhoto = dataSnapshot.child("photoUrl").getValue().toString();
+                    ChatMessage lMessage = new ChatMessage(message,gName,gPhoto);
+                    messageRef.setValue(lMessage).addOnSuccessListener(new OnSuccessListener<Void>() {
+                        @Override
+                        public void onSuccess(Void aVoid) {
+                            launchMessageToast(lName);
+                        }
+                    });
                 }
             }
 
@@ -168,5 +184,23 @@ public class UserInfoFragment extends Fragment {
             }
         });
         mPopupWindow.showAtLocation(linearLayout, Gravity.CENTER,0,0);
+    }
+    protected void launchMessageToast(String userName){
+        Typeface customFont = Typeface.createFromAsset(getActivity().getAssets(),"fonts/Capture_it.ttf");
+        LayoutInflater inflater = getLayoutInflater();
+        View layout = inflater.inflate(R.layout.toast, (ViewGroup) getActivity().findViewById(R.id.toast_layout));
+        layout.setBackgroundResource(R.drawable.borderconnection);
+        ImageView image = layout.findViewById(R.id.toastimage);
+        image.setImageResource(R.mipmap.ic_action_email);
+        TextView text = layout.findViewById(R.id.toasttext);
+        text.setText("Message Sent to : "+ userName);
+        text.setTypeface(customFont);
+
+
+        Toast pToast = new Toast(getActivity());
+        pToast.setGravity(Gravity.TOP, 0, 250);
+        pToast.setDuration(Toast.LENGTH_SHORT);
+        pToast.setView(layout);
+        pToast.show();
     }
 }
