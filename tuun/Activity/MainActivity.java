@@ -31,19 +31,20 @@ import android.support.v7.app.ActionBarDrawerToggle;
 import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.support.v7.widget.Toolbar;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.animation.AlphaAnimation;
 import android.view.animation.Animation;
 import android.view.animation.LinearInterpolator;
-import android.widget.AdapterView;
-import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageView;
@@ -101,6 +102,16 @@ import com.google.firebase.storage.FirebaseStorage;
 import com.google.firebase.storage.OnProgressListener;
 import com.google.firebase.storage.StorageReference;
 import com.google.firebase.storage.UploadTask;
+import com.mikepenz.materialdrawer.AccountHeader;
+import com.mikepenz.materialdrawer.AccountHeaderBuilder;
+import com.mikepenz.materialdrawer.Drawer;
+import com.mikepenz.materialdrawer.DrawerBuilder;
+import com.mikepenz.materialdrawer.model.DividerDrawerItem;
+import com.mikepenz.materialdrawer.model.PrimaryDrawerItem;
+import com.mikepenz.materialdrawer.model.ProfileDrawerItem;
+import com.mikepenz.materialdrawer.model.SecondaryDrawerItem;
+import com.mikepenz.materialdrawer.model.interfaces.IDrawerItem;
+import com.mikepenz.materialize.holder.StringHolder;
 import com.penguinsonabeach.tuun.Network.ConnectionLiveData;
 import com.penguinsonabeach.tuun.Network.ConnectionModel;
 import com.penguinsonabeach.tuun.Object.Meet;
@@ -122,8 +133,8 @@ import static java.lang.Boolean.TRUE;
 
 @SuppressWarnings("ALL")
 public class MainActivity extends AppCompatActivity implements OnMapReadyCallback, GoogleMap.OnMapLongClickListener, GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener, LocationListener, LifecycleRegistryOwner {
-    private static final int MobileData = 2;
-    private static final int WifiData = 1;
+    public static final int MobileData = 2;
+    public static final int WifiData = 1;
     private static final int dailyReward = 10;
     private static final int PERMISSIONS_REQUEST_ACCESS_FINE_LOCATION = 1;
     private static final int RC_PHOTO_PICKER = 2;
@@ -142,6 +153,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private final static String KEY_LOCATION = "location";
     private static final String TAG = MainActivity.class.getSimpleName();
     private final String default_img = "https://firebasestorage.googleapis.com/v0/b/tuun-67689.appspot.com/o/user_photos%2Fno_icon.png?alt=media&token=85744938-bef8-4e56-bbbb-ab357393f8ae";
+    private final Uri TermsURL= Uri.parse("https://firebasestorage.googleapis.com/v0/b/tuun-67689.appspot.com/o/General%2Ftermsofservice.html?alt=media&token=916b5868-3c2c-4195-8b57-692f1df8ff4e");
     private final Intent emailIntent = new Intent(android.content.Intent.ACTION_SEND);
     private Boolean centerEnabled = TRUE;
     private Boolean connected = false;
@@ -184,6 +196,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private final HashMap<String, Meet> hashMapMeetObjects = new HashMap<>();
     private final HashMap<String, User> hashMapUserObjects = new HashMap<>();
     private Typeface customFont;
+    private Drawer result = null;
+    private ProfileDrawerItem prof1;
+    private AccountHeader headerResult;
 
     private final LifecycleRegistry lifecycleRegistry = new LifecycleRegistry(this);
 
@@ -192,7 +207,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         LifecycleRegistry lifecycleRegistry = new LifecycleRegistry(this);
-        createNavBarLayout();
 
         //Set view/font variables
         profilePicture = findViewById(R.id.profilePictureImg);
@@ -222,6 +236,31 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         // Google Auth function to initialize data import for user
         setGoogleAuthDetails();
         setUserActive();
+        createDrawer();
+    }
+
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu){
+        MenuInflater inflater = getMenuInflater();
+        inflater.inflate(R.menu.activity_main_actions,menu);
+        return super.onCreateOptionsMenu(menu);
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item){
+        switch(item.getItemId()) {
+
+            case R.id.action_support:
+                sendCustSuppEmail();
+                return true;
+
+            case R.id.action_tos:
+                goToTerms();
+                return true;
+
+            default:
+                return super.onOptionsItemSelected(item);
+        }
     }
 
     //Listener for Network connection
@@ -310,128 +349,122 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (keyCode == KeyEvent.KEYCODE_BACK) {
-            moveTaskToBack(true);
-            return true;
+        if (result != null && result.isDrawerOpen()) {
+            result.closeDrawer();
+        } else {
+            if (keyCode == KeyEvent.KEYCODE_BACK) {
+                moveTaskToBack(true);
+                return true;
+            }
         }
-        return super.onKeyDown(keyCode, event);
+            return super.onKeyDown(keyCode, event);
     }
 
-    //create navigation bar layout
-    private void createNavBarLayout() {
-        mDrawerList = findViewById(R.id.navList);
-        mDrawerLayout = findViewById(R.id.drawer_layout);
-        mActivityTitle = getTitle().toString();
-        addDrawerItems();
-        setupDrawer();
-        getSupportActionBar().setDisplayHomeAsUpEnabled(true);
-        getSupportActionBar().setHomeButtonEnabled(true);
-    }
+    private void createDrawer(){
+        Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
+        toolbar.setTitle(R.string.app_name);
 
-    //Set up drawer
-    private void setupDrawer() {
-        mDrawerToggle = new ActionBarDrawerToggle(this, mDrawerLayout, R.string.drawer_open, R.string.drawer_close) {
+       PrimaryDrawerItem item0 = new PrimaryDrawerItem().withIdentifier(0).withName(R.string.drawer_item_home);
+       PrimaryDrawerItem item1 = new PrimaryDrawerItem().withIdentifier(1).withName(R.string.drawer_item_profile);
+       SecondaryDrawerItem item2 = new SecondaryDrawerItem().withIdentifier(2).withName(R.string.drawer_item_garage);
+       SecondaryDrawerItem item3 = new SecondaryDrawerItem().withIdentifier(3).withName(R.string.drawer_item_messages);
+       SecondaryDrawerItem item4 = new SecondaryDrawerItem().withIdentifier(4).withName(R.string.drawer_item_leaderboard);
+       SecondaryDrawerItem item5 = new SecondaryDrawerItem().withIdentifier(5).withName(R.string.drawer_item_donate);
+       SecondaryDrawerItem item6 = new SecondaryDrawerItem().withIdentifier(6).withName(R.string.drawer_item_support);
+       SecondaryDrawerItem item7 = new SecondaryDrawerItem().withIdentifier(7).withName(R.string.drawer_item_logout);
+       prof1 = new ProfileDrawerItem().withIdentifier(8).withName(mAuth.getCurrentUser().getDisplayName()).withEmail(mAuth.getCurrentUser().getEmail()).withIcon(getResources().getDrawable(R.drawable.no_icon));
 
-            /** Called when a drawer has settled in a completely open state. */
-            public void onDrawerOpened(View drawerView) {
-                super.onDrawerOpened(drawerView);
-                getSupportActionBar().setTitle("Choose an Option!");
-                invalidateOptionsMenu(); // creates call to onPrepareOptionsMenu()
-            }
 
-            /** Called when a drawer has settled in a completely closed state. */
-            public void onDrawerClosed(View view) {
-                super.onDrawerClosed(view);
-                getSupportActionBar().setTitle(mActivityTitle);
-                invalidateOptionsMenu(); // creates call to onPrepareOptionsMenu()
-            }
-        };
+        headerResult = new AccountHeaderBuilder()
+               .withActivity(this)
+               .withHeaderBackground(R.drawable.header)
+               .addProfiles(
+                       prof1
+               )
+               .build();
+       result = new DrawerBuilder()
+                .withActivity(this)
+                .withAccountHeader(headerResult)
+                .withToolbar(toolbar)
+                .withDisplayBelowStatusBar(false)
+                .addDrawerItems(
+                        item1,
+                        new DividerDrawerItem(),
+                        item2,
+                        item3,
+                        item4,
+                        item5,
+                        item6,
+                        item7
+                )
+                .withOnDrawerItemClickListener(new Drawer.OnDrawerItemClickListener() {
+                    @Override
+                    public boolean onItemClick(View view, int position, IDrawerItem drawerItem) {
+                        switch (position) {
+                            case 0:
 
-        mDrawerToggle.setDrawerIndicatorEnabled(true);
-        mDrawerLayout.addDrawerListener(mDrawerToggle);
+                                break;
+                            case 1:
+                                if(connected){
+                                    Bundle bundle = new Bundle();
+                                    bundle.putString("name",uUser.getName());
+                                    bundle.putString("username",uUser.getUserName());
+                                    bundle.putString("joindate",uUser.getDate());
+                                    bundle.putString("photoUrl",uUser.getPhotoUrl());
+                                    bundle.putInt("points",uUser.getPoints());
+                                    bundle.putString("club",uUser.getClub());
+                                    Intent profileIntent = new Intent(MainActivity.this, MyProfileActivity.class);
+                                    profileIntent.putExtras(bundle);
+                                    startActivity(profileIntent);
+                                }
+                                else{
+                                    createNetworkAlert();
+                                }
+                                break;
+                            case 3:
+                                if(connected) {
+                                    Intent garageIntent = new Intent(MainActivity.this, GarageActivity.class);
+                                    startActivity(garageIntent);
+                                }else {
+                                    createNetworkAlert();
+                                }
+                                break;
+                            case 4:
+                                if(connected) {
+                                    Intent messageIntent = new Intent(MainActivity.this, MessagesActivity.class);
+                                    startActivity(messageIntent);
+                                }else {
+                                    createNetworkAlert();
+                                }
+                                break;
+                            case 5:
+                                if(connected) {
+                                    Intent leaderIntent = new Intent(MainActivity.this, LeaderboardActivity.class);
+                                    startActivity(leaderIntent);
+                                }else {
+                                    createNetworkAlert();
+                                }
+                                break;
+                            case 7:
+                                if(connected) {
+                                    sendCustSuppEmail();
+                                }else {
+                                    createNetworkAlert();
+                                }
+                                break;
+                            case 8:
+                                signOut();
+                                break;
+                            default:
+                                Toast.makeText(MainActivity.this, "Time for an upgrade!", Toast.LENGTH_SHORT).show();
+                                break;
 
-    }
-
-    //Fill drawer with labels/selections
-    private void addDrawerItems() {
-        View header = getLayoutInflater().inflate(R.layout.navigation_header, null);
-        String[] osArray = {"Your Profile","Garage","Messages","Leaderboards","Donate to TuuN","Customer Support","Sign Out"};
-        ArrayAdapter<String> mAdapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, osArray);
-        mDrawerList.setAdapter(mAdapter);
-        mDrawerList.addHeaderView(header);
-
-        mDrawerList.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-            @Override
-            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-                switch (position) {
-                    case 0:
-                        if(connected) {
-                            Intent photoIntent = new Intent(Intent.ACTION_GET_CONTENT);
-                            photoIntent.setType("image/jpeg");
-                            photoIntent.putExtra(Intent.EXTRA_LOCAL_ONLY, true);
-                            startActivityForResult(Intent.createChooser(photoIntent, "Complete action using"), RC_PHOTO_PICKER);
-                        }else {
-                            createNetworkAlert();
                         }
-                        break;
-                    case 1:
-                        if(connected){
-                            Bundle bundle = new Bundle();
-                            bundle.putString("name",uUser.getName());
-                            bundle.putString("username",uUser.getUserName());
-                            bundle.putString("joindate",uUser.getDate());
-                            bundle.putString("photoUrl",uUser.getPhotoUrl());
-                            bundle.putInt("points",uUser.getPoints());
-                            bundle.putString("club",uUser.getClub());
-                            Intent profileIntent = new Intent(MainActivity.this, MyProfileActivity.class);
-                            profileIntent.putExtras(bundle);
-                            startActivity(profileIntent);
-                        }
-                        else{
-                            createNetworkAlert();
-                        }
-                        break;
-                    case 2:
-                        if(connected) {
-                            Intent garageIntent = new Intent(MainActivity.this, GarageActivity.class);
-                            startActivity(garageIntent);
-                        }else {
-                            createNetworkAlert();
-                        }
-                        break;
-                    case 3:
-                        if(connected) {
-                            Intent messageIntent = new Intent(MainActivity.this, MessagesActivity.class);
-                            startActivity(messageIntent);
-                        }else {
-                            createNetworkAlert();
-                        }
-                        break;
-                    case 4:
-                        if(connected) {
-                            Intent leaderIntent = new Intent(MainActivity.this, LeaderboardActivity.class);
-                            startActivity(leaderIntent);
-                        }else {
-                            createNetworkAlert();
-                        }
-                        break;
-                    case 6:
-                        if(connected) {
-                            sendCustSuppEmail();
-                        }else {
-                            createNetworkAlert();
-                        }
-                        break;
-                    case 7:
-                        signOut();
-                        break;
-                    default:
-                        Toast.makeText(MainActivity.this, "Time for an upgrade!", Toast.LENGTH_SHORT).show();
-                        break;
 
-                }
-            }
-        });
+                        return true;
+                    }
+                })
+                .build();
     }
 
     public void onSaveInstanceState(Bundle savedInstanceState) {
@@ -445,25 +478,13 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     protected void onPostCreate(Bundle savedInstanceState) {
         super.onPostCreate(savedInstanceState);
         // Sync the toggle state after onRestoreInstanceState has occurred.
-        mDrawerToggle.syncState();
+        //mDrawerToggle.syncState(); ToDo
     }
 
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
-        mDrawerToggle.onConfigurationChanged(newConfig);
-    }
-
-    @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
-        // Handle action bar item clicks here. The action bar will
-        // automatically handle clicks on the Home/Up button, so long
-        // as you specify a parent activity in AndroidManifest.xml.
-        int id = item.getItemId();
-
-        // Activate the navigation drawer toggle
-        return mDrawerToggle.onOptionsItemSelected(item) || super.onOptionsItemSelected(item);
-
+        //mDrawerToggle.onConfigurationChanged(newConfig); TODO
     }
 
     @Override
@@ -478,6 +499,16 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         super.onStart();
         attachAuthStateListener();
 
+    }
+
+    @Override
+    public void onBackPressed() {
+
+        if (result != null && result.isDrawerOpen()) {
+            result.closeDrawer();
+        } else {
+            super.onBackPressed();
+        }
     }
 
     private void sendCustSuppEmail() {
@@ -509,6 +540,12 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         AlertDialog alert = builder.create();
         alert.show();
+    }
+
+    //Call to go to webpage containing Terms of Service
+    private void goToTerms(){
+        Intent launchBrowser = new Intent(Intent.ACTION_VIEW, TermsURL);
+        startActivity(launchBrowser);
     }
 
     // Method to handle appropriate actions when user signs out
@@ -608,17 +645,17 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     uUser = dataSnapshot.getValue(User.class);
                     updateLoginDate();
 
-                    //Use gathered data to set items
-                    mTitle.setText(uUser.getName());
-                    mTitle.setTypeface(customFont);
-                    if (uUser.getPhotoUrl() != null) {
+                    //Use gathered data to set items TODO
+                    //mTitle.setText(uUser.getName());
+                    //mTitle.setTypeface(customFont);
+                    /*if (uUser.getPhotoUrl() != null) {
                         Glide.with(profilePicture.getContext())
                                 .load(uUser.getPhotoUrl())
                                 .apply(RequestOptions.circleCropTransform())
                                 .into(profilePicture);
                     } else {
                         profilePicture.setImageResource(R.drawable.no_icon);
-                    }
+                    }*/
                 }
             }
 
@@ -638,20 +675,26 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                     //Set Object from DB
                     uUser = dataSnapshot.getValue(User.class);
 
-                    if (uUser.getPhotoUrl() != null) {
+                    /*if (uUser.getPhotoUrl() != null) {  TODO
                         Glide.with(profilePicture.getContext())
                                 .load(uUser.getPhotoUrl())
                                 .apply(RequestOptions.circleCropTransform())
                                 .into(profilePicture);
                     } else {
                         profilePicture.setImageResource(R.drawable.no_icon);
-                    }
+                    }*/
 
                     if (!dataSnapshot.child("username").exists()) {
-                        mTitle.setText(uUser.getName());
+                        //mTitle.setText(uUser.getName());
+                        prof1.withName(uUser.getUserName()).withEmail(uUser.getEmail()).withIcon(uUser.getPhotoUrl());
+                        headerResult.updateProfile(prof1);
+                        //result.updateName(8,new com.mikepenz.materialdrawer.holder.StringHolder(uUser.getUserName()));
                     }
                     else{
-                        mTitle.setText(uUser.getUserName());
+                        //.setText(uUser.getUserName());
+                        prof1.withName(uUser.getName()).withEmail(uUser.getEmail()).withIcon(uUser.getPhotoUrl());
+                        headerResult.updateProfile(prof1);
+                        //result.updateName(8, new com.mikepenz.materialdrawer.holder.StringHolder(uUser.getName()));
                     }
                 }
 

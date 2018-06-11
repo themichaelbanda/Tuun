@@ -39,7 +39,7 @@ public class ChatMessage {
         return messageUser;
     }
 
-    public void setMessageToUser(String messageFromUser) {
+    public void setMessageUser(String messageFromUser) {
         this.messageUser = messageFromUser;
     }
 

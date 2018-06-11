@@ -42,7 +42,6 @@ public class MyProfileActivity extends AppCompatActivity implements TabLayout.On
         Toolbar toolbar = findViewById(R.id.toolbarMyProfile);
         setSupportActionBar(toolbar);
         getSupportActionBar().setDisplayHomeAsUpEnabled(true);
-        getSupportActionBar().setDisplayShowHomeEnabled(true);
 
         //Initializing the tablayout
         tabLayout = findViewById(R.id.tabLayoutMyProfile);

@@ -67,7 +67,6 @@ public class MessagesActivity extends AppCompatActivity implements MessagesRecyc
         Toolbar toolbar = findViewById(R.id.toolbarMessages);
         setSupportActionBar(toolbar);
         getSupportActionBar().setDisplayHomeAsUpEnabled(true);
-        getSupportActionBar().setDisplayShowHomeEnabled(true);
 
         title = findViewById(R.id.messagesTitle);
 
@@ -118,8 +117,18 @@ public class MessagesActivity extends AppCompatActivity implements MessagesRecyc
 
             @Override
             public void onChildChanged(DataSnapshot dataSnapshot, String s) {
-
-
+                ChatMessage currentMessage = dataSnapshot.getValue(ChatMessage.class);
+                currentMessage.setMessageUserId(dataSnapshot.getKey());
+                for(ChatMessage chatMessage : messages){
+                    if(chatMessage.getMessageUserId().equalsIgnoreCase(currentMessage.getMessageUserId())){
+                       int position = messages.indexOf(chatMessage);
+                        messages.get(position).setMessageRead(currentMessage.getMessageRead());
+                        messages.get(position).setMessageDate(currentMessage.getMessageDate());
+                        messages.get(position).setMessageText(currentMessage.getMessageText());
+                        messages.get(position).setMessageUser(currentMessage.getMessageUser());
+                        messageAdapter.notifyDataSetChanged();
+                    }
+                }
             }
 
             @Override
